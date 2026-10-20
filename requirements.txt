@@ -1,0 +1,16 @@
+# Generated mirror for tooling/CI. pyproject.toml is the source of truth.
+pydantic>=2.0
+langgraph>=0.2.60
+openai>=1.40.0
+asyncpg>=0.29.0
+pgvector>=0.3.0
+httpx>=0.27.0
+mcp>=1.2.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.1.0
+
+# dev
+pytest>=8.0
+pytest-asyncio>=0.24
+ruff>=0.8.0

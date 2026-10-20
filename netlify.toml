@@ -1,0 +1,18 @@
+# Netlify build config for the CareerPilot frontend (static Next.js export).
+# The Python backend (FastAPI + SSE) is NOT hosted on Netlify — deploy it to a
+# Python host (Render/Fly/Railway) and point the frontend at it via NEXT_PUBLIC_API_BASE.
+
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Set NEXT_PUBLIC_API_BASE in the Netlify dashboard to your deployed API URL.
+  # Defaults to http://localhost:8000 for local use if unset at build time.
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" font-family="system-ui, sans-serif" font-size="13">
+  <rect width="980" height="620" fill="#0f1420"/>
+  <text x="490" y="34" fill="#e8ecf5" font-size="20" font-weight="700" text-anchor="middle">CareerPilot — Multi-Agent Job-Hunt Copilot</text>
+
+  <!-- top row -->
+  <g>
+    <rect x="40" y="60" width="170" height="64" rx="10" fill="#161c2b" stroke="#2a3350"/>
+    <text x="125" y="88" fill="#e8ecf5" text-anchor="middle" font-weight="600">Web App</text>
+    <text x="125" y="106" fill="#94a0bd" text-anchor="middle">Next.js · chat · trace</text>
+
+    <rect x="250" y="60" width="180" height="64" rx="10" fill="#161c2b" stroke="#2a3350"/>
+    <text x="340" y="88" fill="#e8ecf5" text-anchor="middle" font-weight="600">API (FastAPI)</text>
+    <text x="340" y="106" fill="#94a0bd" text-anchor="middle">sessions · chat · SSE</text>
+
+    <rect x="470" y="60" width="200" height="64" rx="10" fill="#161c2b" stroke="#5b8cff"/>
+    <text x="570" y="86" fill="#e8ecf5" text-anchor="middle" font-weight="600">Live trace (SSE)</text>
+    <text x="570" y="104" fill="#94a0bd" text-anchor="middle">route · agent · tool · HITL</text>
+
+    <line x1="210" y1="92" x2="250" y2="92" stroke="#5b8cff" stroke-width="2"/>
+    <line x1="430" y1="92" x2="470" y2="92" stroke="#5b8cff" stroke-width="2" stroke-dasharray="4 3"/>
+  </g>
+
+  <!-- orchestrator -->
+  <rect x="120" y="150" width="740" height="92" rx="12" fill="#1d2436" stroke="#a78bfa"/>
+  <text x="490" y="176" fill="#e8ecf5" text-anchor="middle" font-weight="700">LangGraph Orchestrator</text>
+  <text x="490" y="196" fill="#94a0bd" text-anchor="middle">router → Send fan-out → run_agent × N → aggregate → END</text>
+  <g fill="#94a0bd" text-anchor="middle" font-size="12">
+    <rect x="150" y="208" width="130" height="24" rx="6" fill="#161c2b" stroke="#2a3350"/><text x="215" y="224">schema routing</text>
+    <rect x="300" y="208" width="130" height="24" rx="6" fill="#161c2b" stroke="#2a3350"/><text x="365" y="224">parallel fan-out</text>
+    <rect x="450" y="208" width="130" height="24" rx="6" fill="#161c2b" stroke="#2a3350"/><text x="515" y="224">aggregation</text>
+    <rect x="600" y="208" width="210" height="24" rx="6" fill="#161c2b" stroke="#fbbf24"/><text x="705" y="224" fill="#fbbf24">interrupt() — human-in-the-loop</text>
+  </g>
+  <line x1="340" y1="124" x2="490" y2="150" stroke="#5b8cff" stroke-width="2"/>
+
+  <!-- agents -->
+  <g text-anchor="middle">
+    <rect x="40" y="280" width="200" height="86" rx="10" fill="#15241c" stroke="#2dd4a7"/>
+    <text x="140" y="306" fill="#e8ecf5" font-weight="600">Knowledge · RAG</text>
+    <text x="140" y="326" fill="#94a0bd">resume + JD + guides</text>
+    <text x="140" y="344" fill="#94a0bd">match / gap analysis</text>
+
+    <rect x="260" y="280" width="200" height="86" rx="10" fill="#1a2030" stroke="#5b8cff"/>
+    <text x="360" y="306" fill="#e8ecf5" font-weight="600">Jobs · MCP</text>
+    <text x="360" y="326" fill="#94a0bd">search_jobs / get_company</text>
+    <text x="360" y="344" fill="#94a0bd">live postings</text>
+
+    <rect x="480" y="280" width="200" height="86" rx="10" fill="#1a2030" stroke="#5b8cff"/>
+    <text x="580" y="306" fill="#e8ecf5" font-weight="600">Analytics · SQL</text>
+    <text x="580" y="326" fill="#94a0bd">read-only tracker queries</text>
+    <text x="580" y="344" fill="#94a0bd">response / stale rates</text>
+
+    <rect x="700" y="280" width="200" height="86" rx="10" fill="#2a2416" stroke="#fbbf24"/>
+    <text x="800" y="306" fill="#e8ecf5" font-weight="600">Notify · HITL</text>
+    <text x="800" y="326" fill="#94a0bd">cover letter / follow-up</text>
+    <text x="800" y="344" fill="#94a0bd">confirm before send</text>
+  </g>
+  <g stroke="#2a3350" stroke-width="1.5">
+    <line x1="140" y1="242" x2="140" y2="280"/>
+    <line x1="360" y1="242" x2="360" y2="280"/>
+    <line x1="580" y1="242" x2="580" y2="280"/>
+    <line x1="800" y1="242" x2="800" y2="280"/>
+  </g>
+
+  <!-- data sources -->
+  <rect x="40" y="398" width="860" height="70" rx="10" fill="#141a28" stroke="#2a3350"/>
+  <text x="470" y="420" fill="#94a0bd" text-anchor="middle" font-weight="600">Data sources &amp; tools (protocol + real adapter + offline fake)</text>
+  <g fill="#94a0bd" text-anchor="middle" font-size="12">
+    <text x="140" y="448">pgvector store</text>
+    <text x="360" y="448">jobs MCP server</text>
+    <text x="580" y="448">read-only Postgres</text>
+    <text x="800" y="448">Slack / Resend → Demo Outbox</text>
+  </g>
+
+  <!-- foundation -->
+  <rect x="40" y="498" width="860" height="86" rx="10" fill="#161c2b" stroke="#2a3350"/>
+  <text x="470" y="522" fill="#e8ecf5" text-anchor="middle" font-weight="600">Shared foundation (ports &amp; adapters)</text>
+  <g fill="#94a0bd" text-anchor="middle" font-size="12">
+    <text x="150" y="552">LLM / Embedding</text><text x="150" y="568">gateway protocols</text>
+    <text x="360" y="552">conversation</text><text x="360" y="568">memory</text>
+    <text x="560" y="552">schema + SQL + HITL</text><text x="560" y="568">guardrails</text>
+    <text x="780" y="552">tool cache +</text><text x="780" y="568">parallel tool calls</text>
+  </g>
+</svg>
