@@ -60,6 +60,15 @@ export default function ChatPage() {
         setEvents((prev) => [...prev, e]),
       );
       applyResult(result);
+    } catch {
+      setEvents((prev) => [
+        ...prev,
+        { type: "error", message: "Request failed — the backend may be waking up. Try again in a moment." },
+      ]);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", replies: [{ agent: "system", content: "Couldn't reach the backend. Render's free tier sleeps when idle — wait ~30s and resend.", metadata: {} }], routing_reasoning: "" },
+      ]);
     } finally {
       setBusy(false);
     }

@@ -46,19 +46,30 @@ export async function streamPost(
   let buffer = "";
   let result: ChatResult | null = null;
 
+  const handleFrame = (frame: string) => {
+    // A frame may have several lines; collect all "data:" lines (SSE allows multi-line).
+    const data = frame
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trim())
+      .join("");
+    if (!data) return;
+    const payload = JSON.parse(data);
+    if (payload.type === "result") result = payload as ChatResult;
+    else onEvent(payload as TraceEvent);
+  };
+
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // Normalize CRLF → LF so the "\n\n" event delimiter matches regardless of how
+    // the server (or a proxy like Render) terminates SSE lines.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
     const frames = buffer.split("\n\n");
     buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      const line = frame.split("\n").find((l) => l.startsWith("data:"));
-      if (!line) continue;
-      const payload = JSON.parse(line.slice(5).trim());
-      if (payload.type === "result") result = payload as ChatResult;
-      else onEvent(payload as TraceEvent);
-    }
+    for (const frame of frames) handleFrame(frame);
   }
+  // Process any trailing frame that lacked a final blank line.
+  if (buffer.trim()) handleFrame(buffer);
   return result;
 }
