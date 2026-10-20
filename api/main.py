@@ -38,10 +38,20 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def _allowed_origins() -> list[str]:
+    """Lock CORS to FRONTEND_ORIGIN when it is set (plus localhost for dev); fall back
+    to open access only when it is unset or explicitly "*", so a fresh deploy still
+    works out of the box but can be tightened with a single env var."""
+    configured = os.environ.get("FRONTEND_ORIGIN", "").strip()
+    if configured and configured != "*":
+        return [configured, "http://localhost:3000"]
+    return ["*"]
+
+
 app = FastAPI(title="CareerPilot API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000"), "*"],
+    allow_origins=_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

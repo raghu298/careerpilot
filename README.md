@@ -1,5 +1,9 @@
 # CareerPilot — a multi-agent job-hunt copilot
 
+**Live demo:** [careerpilot-raghu298.netlify.app](https://careerpilot-raghu298.netlify.app) ·
+**API:** [careerpilot-seeh.onrender.com/health](https://careerpilot-seeh.onrender.com/health)
+*(backend is on Render's free tier — the first request after idle takes ~30–60s to wake.)*
+
 **Ask one question in plain English. A router sends it to the right specialist agent(s),
 they run in parallel, and you get one combined answer — with every routing decision and
 tool call streamed live.**
