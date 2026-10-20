@@ -19,6 +19,15 @@ export async function createSession(personaId: string): Promise<string> {
   return data.session as string;
 }
 
+export async function setDocs(session: string, resume: string, jobDescription: string) {
+  const res = await fetch(`${API_BASE}/session/docs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session, resume, job_description: jobDescription }),
+  });
+  return res.json();
+}
+
 export async function getOutbox(session: string) {
   const res = await fetch(`${API_BASE}/demo/outbox`, { headers: { "x-session": session } });
   const data = await res.json();

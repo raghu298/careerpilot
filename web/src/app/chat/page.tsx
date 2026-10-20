@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createSession, streamPost } from "@/lib/api";
+import { createSession, setDocs, streamPost } from "@/lib/api";
 import { buildTrace } from "@/lib/trace";
 import type { ChatResult, Message, Pending, Persona, TraceEvent } from "@/lib/types";
 import TracePanel from "@/components/TracePanel";
 import PendingActionCard from "@/components/PendingActionCard";
 import StarterPrompts from "@/components/StarterPrompts";
+import DocsModal from "@/components/DocsModal";
 
 type Conversation = { id: string; token: string; title: string; messages: Message[] };
 
@@ -23,6 +24,7 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [working, setWorking] = useState(true);
   const [showCitations, setShowCitations] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) || null;
@@ -192,6 +194,7 @@ export default function ChatPage() {
           </div>
           <div className="header-center">Job-Hunt Copilot</div>
           <div className="header-right">
+            <button className="text-button" onClick={() => setShowDocs(true)}>Use my resume</button>
             <label className="toggle-label">
               <input type="checkbox" checked={working} onChange={(e) => setWorking(e.target.checked)} />
               Working
@@ -258,6 +261,23 @@ export default function ChatPage() {
       </main>
 
       {working && <TracePanel trace={trace} />}
+
+      {showDocs && (
+        <DocsModal
+          onClose={() => setShowDocs(false)}
+          onSave={async (resume, jd) => {
+            if (!active) return;
+            await setDocs(active.token, resume, jd);
+            updateActive((c) => ({
+              ...c,
+              messages: [
+                ...c.messages,
+                { role: "assistant", replies: [{ agent: "system", content: "Got it — I'll analyse your résumé and that job description from now on. Try: \"Does my resume fit this role? What are my gaps?\"", metadata: {} }], routing_reasoning: "" },
+              ],
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }

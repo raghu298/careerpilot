@@ -223,3 +223,16 @@ a { color: var(--accent); text-decoration: none; }
 
 .conversation-delete { padding: 8px 10px; border: 0; background: transparent; color: #94a3b8; font-size: 15px; line-height: 1; }
 .conversation-delete:hover { color: #ff8585; }
+
+/* ---- docs modal ---- */
+.modal-overlay { position: fixed; inset: 0; background: rgba(10,16,30,.55); display: grid; place-items: center; padding: 20px; z-index: 50; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modal h2 { margin: 0 0 4px; font-size: 19px; }
+.modal-sub { color: var(--text-muted); font-size: 13px; margin: 0 0 14px; line-height: 1.5; }
+.modal-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 10px 0 5px; text-transform: uppercase; letter-spacing: .03em; }
+.modal textarea { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 13px; font-family: inherit; resize: vertical; }
+.modal textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.btn-primary { padding: 9px 18px; border-radius: 9px; border: none; background: var(--accent); color: white; font-weight: 600; font-size: 14px; }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ghost { padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; }

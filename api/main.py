@@ -27,7 +27,8 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from careerpilot.access_policy import list_personas
-from careerpilot.bootstrap import build_shared_resources
+from careerpilot.bootstrap import build_session_orchestrator, build_shared_resources, seed_knowledge_store
+from careerpilot.fixtures import KNOWLEDGE_DOCS
 from api.sessions import Session, SessionStore
 
 
@@ -70,6 +71,12 @@ class PendingRequest(BaseModel):
     session: str
     action: str  # "confirm" | "cancel" | "revise"
     edit: str | None = None
+
+
+class DocsRequest(BaseModel):
+    session: str
+    resume: str = ""
+    job_description: str = ""
 
 
 def _require_session(request_token: str) -> Session:
@@ -177,6 +184,29 @@ async def pending(req: PendingRequest):
         return await session.orchestrator.resume_pending(decision, on_event=on_event)
 
     return EventSourceResponse(_stream(factory))
+
+
+@app.post("/session/docs")
+async def set_docs(req: DocsRequest):
+    """Replace this session's knowledge base with the demo corpus PLUS the user's own
+    resume and target job description, so the Knowledge agent analyses their real data."""
+    session = _require_session(req.session)
+    extra: list[dict] = []
+    if req.resume.strip():
+        extra.append({"source": "my-resume", "content": req.resume.strip(), "access_scope": "general"})
+    if req.job_description.strip():
+        extra.append({"source": "jd-target", "content": req.job_description.strip(), "access_scope": "general"})
+    if not extra:
+        return {"ok": True, "using_custom": False}
+
+    # Replace the demo resume/JD with the user's own; keep the generic career guides.
+    base = [d for d in KNOWLEDGE_DOCS if d["source"] != "my-resume" and not d["source"].startswith("jd")]
+    resources = app.state.resources
+    store = await seed_knowledge_store(resources.embeddings, base + extra)
+    session.orchestrator = build_session_orchestrator(
+        resources, persona_id=session.persona_id, vector_store=store
+    )
+    return {"ok": True, "using_custom": True, "docs": [d["source"] for d in extra]}
 
 
 @app.get("/demo/outbox")

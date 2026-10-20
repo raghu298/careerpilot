@@ -113,7 +113,11 @@ async def _build_jobs_source() -> tuple[JobsSource, str, object | None]:
 
 
 def build_session_orchestrator(
-    resources: SharedResources, *, persona_id: str, memory: ConversationMemory | None = None
+    resources: SharedResources,
+    *,
+    persona_id: str,
+    memory: ConversationMemory | None = None,
+    vector_store: VectorStore | None = None,
 ) -> Orchestrator:
     caps = resolve_capabilities(persona_id)
     demo_outbox = DemoOutbox()
@@ -123,7 +127,11 @@ def build_session_orchestrator(
     retrieval_floor = 0.05 if resources.offline else 0.2
     agents = {
         "knowledge": KnowledgeAgent(
-            resources.llm, resources.embeddings, resources.vector_store, caps, retrieval_floor=retrieval_floor
+            resources.llm,
+            resources.embeddings,
+            vector_store or resources.vector_store,
+            caps,
+            retrieval_floor=retrieval_floor,
         ),
         "jobs": JobsAgent(resources.llm, resources.jobs_source, caps),
         "analytics": AnalyticsAgent(resources.llm, FakeSQLClient(role=caps.sql_role), caps),
