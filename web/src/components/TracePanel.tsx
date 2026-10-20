@@ -1,65 +1,81 @@
-import type { TraceEvent } from "@/lib/types";
+import type { Trace, TraceBranch } from "@/lib/trace";
 
-const DOT: Record<string, string> = {
-  routing_decided: "route",
-  agent_started: "agent",
-  agent_finished: "agent",
-  tool_called: "tool",
-  tool_result: "tool",
-  staged: "hitl",
-  pending_action: "hitl",
-  done: "done",
-  error: "err",
-};
+export default function TracePanel({ trace }: { trace: Trace }) {
+  const hasStarted = trace.branches.length > 0 || !!trace.reasoning;
 
-function label(e: TraceEvent): string {
-  switch (e.type) {
-    case "routing_decided":
-      return `Routed → ${(e.agents || []).join(", ") || "none"}`;
-    case "agent_started":
-      return `${e.agent} started`;
-    case "agent_finished":
-      return `${e.agent} finished`;
-    case "tool_called":
-      return `${e.agent}: ${e.tool}()`;
-    case "tool_result":
-      return `${e.agent}: ${e.tool} → result`;
-    case "staged":
-      return `${e.agent} staged a draft`;
-    case "pending_action":
-      return `Awaiting your confirmation (${e.kind})`;
-    case "done":
-      return "Done";
-    case "error":
-      return `Error: ${e.message}`;
-    default:
-      return e.type;
-  }
-}
-
-export default function TracePanel({ events }: { events: TraceEvent[] }) {
-  const routing = events.find((e) => e.type === "routing_decided");
   return (
-    <aside className="trace">
-      <h3>Orchestration Trace</h3>
-      {events.length === 0 ? (
-        <div className="trace-empty">Send a message to see how the agents coordinate.</div>
-      ) : (
-        <>
-          {routing?.reasoning && (
-            <div className="reasoning">
-              <div className="reasoning-head">Orchestrator</div>
-              {routing.reasoning}
-            </div>
+    <aside className="trace-panel">
+      <div className="trace-title">Orchestration Trace</div>
+
+      {!hasStarted && <p className="trace-empty">Send a message to see how the agents coordinate.</p>}
+
+      {hasStarted && (
+        <div className="trace-graph">
+          <TraceNode label="Orchestrator" sublabel={trace.reasoning} status="done" />
+          <div className="trace-connector" />
+
+          <div className="trace-branches">
+            {trace.branches.map((b) => (
+              <BranchColumn key={b.agent} branch={b} />
+            ))}
+          </div>
+
+          <div className="trace-connector" />
+          <TraceNode label="Orchestrator" status={trace.finished ? "done" : "running"} />
+
+          {trace.error && <div className="trace-error">{trace.error}</div>}
+          {trace.finished && !trace.error && (
+            <>
+              <div className="trace-connector" />
+              <TraceNode label="Final Answer" status="done" />
+            </>
           )}
-          {events.map((e, i) => (
-            <div className="evt" key={i}>
-              <span className={`dot ${DOT[e.type] || "done"}`} />
-              <span>{label(e)}</span>
-            </div>
-          ))}
-        </>
+        </div>
       )}
     </aside>
   );
 }
+
+function BranchColumn({ branch }: { branch: TraceBranch }) {
+  return (
+    <div className="trace-branch">
+      <TraceNode label={branch.agent} status={branch.status} compact />
+      {branch.steps.map((step, i) => (
+        <div key={i} className="trace-step">
+          <div className="trace-connector trace-connector-small" />
+          <div className={`trace-step-box ${step.status}`}>
+            <span className="trace-step-tool">{step.tool}</span>
+            {step.callDetail && <span className="trace-step-detail">{step.callDetail}</span>}
+            {step.status === "done" && step.resultDetail && (
+              <span className="trace-step-result">{step.resultDetail}</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TraceNode({
+  label,
+  sublabel,
+  status,
+  compact,
+}: {
+  label: string;
+  sublabel?: string;
+  status: StepStatusLike;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`trace-node ${status} ${compact ? "compact" : ""}`}>
+      <span className="trace-node-label">
+        {label}
+        {status === "running" && <span className="trace-node-spinner" aria-hidden="true" />}
+      </span>
+      {sublabel && <span className="trace-node-sublabel">{sublabel}</span>}
+    </div>
+  );
+}
+
+type StepStatusLike = "running" | "done";

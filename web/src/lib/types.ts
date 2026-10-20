@@ -4,6 +4,7 @@ export type TraceEvent = {
   type: string;
   agent?: string;
   tool?: string;
+  args?: Record<string, unknown>;
   agents?: string[];
   reasoning?: string;
   kind?: string;

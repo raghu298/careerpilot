@@ -12,7 +12,7 @@ export default function Landing() {
   useEffect(() => {
     getPersonas()
       .then(setPersonas)
-      .catch(() => setError("Couldn't reach the CareerPilot API. Is the backend running?"));
+      .catch(() => setError("Couldn't reach the CareerPilot API — the backend may be waking up. Refresh in ~30s."));
   }, []);
 
   async function choose(p: Persona) {
@@ -23,33 +23,33 @@ export default function Landing() {
       localStorage.setItem("cp_persona", JSON.stringify(p));
       window.location.href = "/chat";
     } catch {
-      setError("Couldn't start a session.");
+      setError("Couldn't start a session. Try again in a moment.");
       setBusy(false);
     }
   }
 
   return (
-    <div className="center">
-      <div className="card">
-        <h1>CareerPilot</h1>
-        <p>
-          A multi-agent job-hunt copilot. Ask one question; a router sends it to the right
-          specialist agents — resume/JD analysis, live job search over MCP, your application
-          tracker, and a confirm-before-send outreach drafter — running in parallel with a
-          live orchestration trace.
+    <div className="chooser-page">
+      <div className="chooser-left">
+        <p className="chooser-brand">CareerPilot</p>
+        <h1 className="chooser-welcome">Your multi-agent job-hunt copilot.</h1>
+        <p className="chooser-subtitle">
+          Ask one question. A router sends it to the right specialist agents — resume/JD analysis (RAG),
+          live job search (MCP), your application tracker (SQL), and a confirm-before-send outreach drafter —
+          running in parallel with a live orchestration trace.
         </p>
-        <p style={{ marginTop: 10 }}>Pick a demo profile to begin — no sign-up:</p>
-        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-        <div className="persona-grid">
-          {personas.map((p) => (
-            <button key={p.id} className="persona-pick" disabled={busy} onClick={() => choose(p)}>
-              <div>{p.name}</div>
-              <div className="role">
-                {p.id === "riya" ? "Active job seeker · software engineer" : "Senior career switcher · premium guides"}
-              </div>
-            </button>
-          ))}
-        </div>
+      </div>
+      <div className="chooser-right">
+        <h2 className="chooser-title">Pick a demo profile — no sign-up</h2>
+        {error && <p className="chooser-error">{error}</p>}
+        {personas.map((p) => (
+          <button key={p.id} className="persona-card" disabled={busy} onClick={() => choose(p)}>
+            <div className="pname">{p.name}</div>
+            <div className="prole">
+              {p.id === "riya" ? "Active job seeker · software engineer" : "Senior career switcher · premium guides"}
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );

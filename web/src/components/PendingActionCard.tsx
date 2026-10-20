@@ -14,35 +14,36 @@ export default function PendingActionCard({
   const [edit, setEdit] = useState("");
 
   return (
-    <div className="pending">
-      <div className="tag">human-in-the-loop · {pending.kind}</div>
-      <div style={{ margin: "6px 0", color: "var(--muted)", fontSize: 13 }}>
+    <div className="pending-card">
+      <span className="message-label">{pending.agent} · awaiting your confirmation</span>
+      <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 2 }}>
         Nothing is sent until you confirm.
       </div>
-      <pre>{pending.preview}</pre>
+      <pre className="pending-preview">{pending.preview}</pre>
+
       {editing && (
-        <textarea
-          className="composer"
-          style={{ width: "100%", marginTop: 8, minHeight: 60 }}
-          placeholder="How should I revise it? e.g. 'make it shorter and mention the LangGraph project'"
-          value={edit}
-          onChange={(e) => setEdit(e.target.value)}
-        />
+        <div className="revise-row">
+          <input
+            placeholder="How should I revise it? e.g. 'shorter, mention my LangGraph project'"
+            value={edit}
+            onChange={(e) => setEdit(e.target.value)}
+          />
+          <button disabled={busy || !edit.trim()} onClick={() => onResolve("revise", edit)}>
+            Apply
+          </button>
+        </div>
       )}
+
       <div className="pending-actions">
-        <button className="btn primary" disabled={busy} onClick={() => onResolve("confirm")}>
+        <button className="send-button" disabled={busy} onClick={() => onResolve("confirm")}>
           Send
         </button>
-        {editing ? (
-          <button className="btn" disabled={busy || !edit.trim()} onClick={() => onResolve("revise", edit)}>
-            Apply edit
-          </button>
-        ) : (
-          <button className="btn" disabled={busy} onClick={() => setEditing(true)}>
+        {!editing && (
+          <button disabled={busy} onClick={() => setEditing(true)}>
             Edit
           </button>
         )}
-        <button className="btn danger" disabled={busy} onClick={() => onResolve("cancel")}>
+        <button className="cancel-button" disabled={busy} onClick={() => onResolve("cancel")}>
           Cancel
         </button>
       </div>
