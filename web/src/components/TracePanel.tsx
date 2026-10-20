@@ -38,18 +38,27 @@ function label(e: TraceEvent): string {
 }
 
 export default function TracePanel({ events }: { events: TraceEvent[] }) {
+  const routing = events.find((e) => e.type === "routing_decided");
   return (
     <aside className="trace">
       <h3>Orchestration Trace</h3>
       {events.length === 0 ? (
         <div className="trace-empty">Send a message to see how the agents coordinate.</div>
       ) : (
-        events.map((e, i) => (
-          <div className="evt" key={i}>
-            <span className={`dot ${DOT[e.type] || "done"}`} />
-            <span>{label(e)}</span>
-          </div>
-        ))
+        <>
+          {routing?.reasoning && (
+            <div className="reasoning">
+              <div className="reasoning-head">Orchestrator</div>
+              {routing.reasoning}
+            </div>
+          )}
+          {events.map((e, i) => (
+            <div className="evt" key={i}>
+              <span className={`dot ${DOT[e.type] || "done"}`} />
+              <span>{label(e)}</span>
+            </div>
+          ))}
+        </>
       )}
     </aside>
   );

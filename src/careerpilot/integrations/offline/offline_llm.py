@@ -9,10 +9,19 @@ else changes, because everything depends on the protocols, not these classes.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 
 from careerpilot.core.llm_client import ToolCall, ToolResponse
+
+# A small skill vocabulary used to produce a deterministic resume-vs-JD match/gap
+# analysis offline. With OPENAI_API_KEY set, the real model does this far better.
+_SKILLS = [
+    "python", "fastapi", "postgresql", "pgvector", "rag", "tool-calling", "agents",
+    "langgraph", "kubernetes", "docker", "aws", "evaluation", "observability",
+    "mlops", "llm", "sql", "retrieval",
+]
 
 _ROUTING_KEYWORDS = {
     "knowledge": ("resume", "cv", "jd", "job description", "fit", "gap", "match", "interview",
@@ -33,15 +42,20 @@ class OfflineLLMClient:
             agents = [a for a, kws in _ROUTING_KEYWORDS.items() if any(k in text for k in kws)]
             if not agents:
                 agents = ["knowledge"]
-            return schema(agents=agents, reasoning="offline keyword routing")
+            why = {
+                "knowledge": "needs the user's resume / JD / career guides",
+                "jobs": "needs live job listings or company info",
+                "analytics": "needs the user's own application-tracker data",
+                "notify": "needs to draft an outreach message for confirmation",
+            }
+            reason = "Routing to " + ", ".join(agents) + " — " + "; ".join(why[a] for a in agents) + "."
+            return schema(agents=agents, reasoning=reason)
         if name == "KnowledgeAnswer":
             ctx = user_prompt.split("Context:", 1)[-1].split("Question:", 1)[0].strip()
-            snippet = ctx.split("\n\n")[0][:320] if ctx else ""
-            return schema(
-                answer=(snippet or "No relevant context was found."),
-                citations=re.findall(r"\[([^\]]+)\]", ctx)[:3],
-                answer_found=bool(snippet),
-            )
+            sources = re.findall(r"\[([^\]]+)\]", ctx)[:3]
+            chunks = {m.group(1): m.group(2).strip() for m in re.finditer(r"\[([^\]]+)\]\s*(.*?)(?=\n\n\[|\Z)", ctx, re.S)}
+            answer = self._knowledge_answer(text, chunks)
+            return schema(answer=answer or "No relevant context was found.", citations=sources, answer_found=bool(answer))
         if name == "Draft":
             return schema(channel="email", subject="Following up on my application", body=user_prompt.strip()[:400])
         return schema.model_construct()
@@ -66,11 +80,67 @@ class OfflineLLMClient:
         return ToolResponse(content="I don't have a tool for that.")
 
     @staticmethod
+    def _knowledge_answer(question: str, chunks: dict) -> str:
+        """Deterministic resume-vs-JD match/gap analysis, or a clean direct answer."""
+        resume = next((v for k, v in chunks.items() if "my-resume" in k), "")
+        jd = next((v for k, v in chunks.items() if k.startswith("jd")), "")
+        wants_fit = any(w in question for w in ("fit", "gap", "match", "suit", "qualify"))
+
+        if wants_fit and resume and jd:
+            r_full, j = resume.lower(), jd.lower()
+            # Skills named in the resume's own "Gaps:" clause are NOT matches.
+            r_have, _, r_gap = r_full.partition("gaps:")
+            jd_skills = [s for s in _SKILLS if s in j]
+            matched = [s for s in jd_skills if s in r_have and s not in r_gap]
+            gaps = [s for s in jd_skills if s not in matched]
+            lines = ["Here's how your profile lines up with the job description:\n"]
+            if matched:
+                lines.append("**Strong matches** — " + ", ".join(sorted(set(matched))) + ".")
+            if gaps:
+                lines.append("**Gaps to address** — " + ", ".join(sorted(set(gaps))) +
+                             ". Add these to your resume where genuinely true, or build a small project that shows them.")
+            lines.append("\nTip: mirror the JD's exact terms in the top third of your resume when they honestly apply to you.")
+            return "\n".join(lines)
+
+        # Otherwise: a clean direct answer from the most relevant chunk (no [tag] noise).
+        if chunks:
+            return next(iter(chunks.values()))
+        return ""
+
+    @staticmethod
     def _summarize(messages) -> str:
-        tool_payloads = [m["content"] for m in messages if m.get("role") == "tool"]
-        if not tool_payloads:
+        payloads = []
+        for m in messages:
+            if m.get("role") == "tool":
+                try:
+                    payloads.append(json.loads(m["content"]))
+                except (ValueError, TypeError):
+                    pass
+        if not payloads:
             return "Here's what I found."
-        return "Based on the data I retrieved: " + " ".join(tool_payloads)[:600]
+
+        out: list[str] = []
+        for p in payloads:
+            data = p.get("rows") if isinstance(p, dict) and "rows" in p else p
+            if isinstance(p, dict) and "jobs" in p:
+                jobs = p["jobs"]
+                out.append(f"I found {len(jobs)} matching role(s):")
+                for j in jobs:
+                    out.append(f"• {j.get('title')} at {j.get('company')} ({j.get('location')}) — "
+                               f"{j.get('stack', '')}" + (f", ₹{j['salary_lpa']} LPA" if j.get("salary_lpa") else ""))
+            elif isinstance(data, list) and data and isinstance(data[0], dict):
+                if {"status", "count"} <= set(data[0]):
+                    out.append("Your applications by status: " +
+                               ", ".join(f"{r['status']} ({r['count']})" for r in data) + ".")
+                else:
+                    out.append("Here's what the tracker shows:")
+                    for row in data[:10]:
+                        out.append("• " + ", ".join(f"{k}: {v}" for k, v in row.items()))
+            elif isinstance(p, dict) and p.get("name"):
+                out.append(f"{p.get('name')} — {p.get('industry', '')}, ~{p.get('size', '?')} people. {p.get('summary', '')}")
+            else:
+                out.append(str(p))
+        return "\n".join(out)
 
 
 class HashingEmbeddingClient:
