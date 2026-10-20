@@ -226,7 +226,7 @@ export default function ChatPage() {
                 m.replies.map((r, j) => (
                   <div className="agent-reply" key={`${i}-${j}`}>
                     <span className="message-label">{r.agent}</span>
-                    <div className="body">{r.content}</div>
+                    <div className="body">{linkify(r.content)}</div>
                     {showCitations && Array.isArray(r.metadata?.citations) && (r.metadata.citations as string[]).length > 0 && (
                       <div className="citations">
                         sources
@@ -284,6 +284,18 @@ export default function ChatPage() {
 
 function personaTitle(id: string): string {
   return id === "riya" ? "Software Engineer" : "Senior Engineer · Career Switcher";
+}
+
+function linkify(text: string): (string | React.ReactNode)[] {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noreferrer">
+        {part}
+      </a>
+    ) : (
+      part
+    ),
+  );
 }
 
 function truncate(s: string, n = 40): string {

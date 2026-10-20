@@ -146,10 +146,21 @@ class OfflineLLMClient:
             data = p.get("rows") if isinstance(p, dict) and "rows" in p else p
             if isinstance(p, dict) and "jobs" in p:
                 jobs = p["jobs"]
-                out.append(f"I found {len(jobs)} matching role(s):")
+                if not jobs:
+                    out.append("I couldn't find live roles matching that right now — try a broader title.")
+                    continue
+                src = " (live)" if str(p.get("source", "")).startswith("remotive") else ""
+                out.append(f"I found {len(jobs)} matching role(s){src}:")
                 for j in jobs:
-                    out.append(f"• {j.get('title')} at {j.get('company')} ({j.get('location')}) — "
-                               f"{j.get('stack', '')}" + (f", ₹{j['salary_lpa']} LPA" if j.get("salary_lpa") else ""))
+                    line = f"• {j.get('title')} at {j.get('company')} ({j.get('location')})"
+                    if j.get("stack"):
+                        line += f" — {j['stack']}"
+                    salary = j.get("salary") or (f"₹{j['salary_lpa']} LPA" if j.get("salary_lpa") else "")
+                    if salary:
+                        line += f" · {salary}"
+                    if j.get("url"):
+                        line += f"\n  Apply: {j['url']}"
+                    out.append(line)
             elif isinstance(data, list) and data and isinstance(data[0], dict):
                 if {"status", "count"} <= set(data[0]):
                     out.append("Your applications by status: " +
