@@ -46,18 +46,25 @@ def _real_mode() -> bool:
     return bool(os.environ.get("OPENAI_API_KEY"))
 
 
+async def seed_knowledge_store(embeddings: EmbeddingClient, docs: list[dict]) -> InMemoryVectorStore:
+    """Chunk + embed a set of documents into a fresh vector store. Reused for the shared
+    demo corpus and for a per-session store when a user supplies their own resume/JD."""
+    store = InMemoryVectorStore()
+    for doc in docs:
+        for chunk in chunk_document(doc["content"]):
+            [vec] = await embeddings.embed([chunk])
+            await store.add(
+                content=chunk, embedding=vec, source=doc["source"], access_scope=doc["access_scope"]
+            )
+    return store
+
+
 async def build_shared_resources() -> SharedResources:
     real = _real_mode()
     llm: LLMClient = OpenAILLMClient() if real else OfflineLLMClient()
     embeddings: EmbeddingClient = OpenAIEmbeddingClient() if real else HashingEmbeddingClient()
 
-    vector_store = InMemoryVectorStore()
-    for doc in KNOWLEDGE_DOCS:
-        for chunk in chunk_document(doc["content"]):
-            [vec] = await embeddings.embed([chunk])
-            await vector_store.add(
-                content=chunk, embedding=vec, source=doc["source"], access_scope=doc["access_scope"]
-            )
+    vector_store = await seed_knowledge_store(embeddings, KNOWLEDGE_DOCS)
 
     return SharedResources(
         llm=llm,

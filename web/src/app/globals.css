@@ -220,3 +220,6 @@ a { color: var(--accent); text-decoration: none; }
 .toggle-label input { accent-color: var(--accent); cursor: pointer; }
 .brand-role { color: var(--text-muted); }
 @media (max-width: 1000px) { .header-right .toggle-label { display: none; } }
+
+.conversation-delete { padding: 8px 10px; border: 0; background: transparent; color: #94a3b8; font-size: 15px; line-height: 1; }
+.conversation-delete:hover { color: #ff8585; }

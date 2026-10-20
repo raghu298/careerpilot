@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { streamPost } from "@/lib/api";
+import { createSession, streamPost } from "@/lib/api";
 import { buildTrace } from "@/lib/trace";
 import type { ChatResult, Message, Pending, Persona, TraceEvent } from "@/lib/types";
 import TracePanel from "@/components/TracePanel";
 import PendingActionCard from "@/components/PendingActionCard";
 import StarterPrompts from "@/components/StarterPrompts";
 
+type Conversation = { id: string; token: string; title: string; messages: Message[] };
+
+const CONVOS_KEY = "cp_convos";
+const ACTIVE_KEY = "cp_active";
+
 export default function ChatPage() {
   const [persona, setPersona] = useState<Persona | null>(null);
-  const [session, setSession] = useState<string>("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
   const [input, setInput] = useState("");
@@ -20,59 +25,121 @@ export default function ChatPage() {
   const [showCitations, setShowCitations] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const active = conversations.find((c) => c.id === activeId) || null;
   const trace = useMemo(() => buildTrace(events), [events]);
 
+  // ---- load / persist --------------------------------------------------------
   useEffect(() => {
-    const tok = localStorage.getItem("cp_session");
     const p = localStorage.getItem("cp_persona");
+    const tok = localStorage.getItem("cp_session");
     if (!tok) {
       window.location.href = "/";
       return;
     }
-    setSession(tok);
     if (p) setPersona(JSON.parse(p));
+
+    let convos: Conversation[] = [];
+    try {
+      convos = JSON.parse(localStorage.getItem(CONVOS_KEY) || "[]");
+    } catch {
+      convos = [];
+    }
+    if (convos.length === 0) {
+      convos = [{ id: cryptoId(), token: tok, title: "New conversation", messages: [] }];
+    }
+    setConversations(convos);
+    const savedActive = localStorage.getItem(ACTIVE_KEY);
+    setActiveId(savedActive && convos.some((c) => c.id === savedActive) ? savedActive : convos[0].id);
   }, []);
 
   useEffect(() => {
+    if (conversations.length) localStorage.setItem(CONVOS_KEY, JSON.stringify(conversations));
+  }, [conversations]);
+  useEffect(() => {
+    if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
+  }, [activeId]);
+  useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, [messages, pending, busy]);
+  }, [active?.messages, pending, busy]);
 
+  // ---- conversation management ----------------------------------------------
+  async function newConversation() {
+    if (!persona) return;
+    try {
+      const token = await createSession(persona.id);
+      const convo: Conversation = { id: cryptoId(), token, title: "New conversation", messages: [] };
+      setConversations((cs) => [convo, ...cs]);
+      setActiveId(convo.id);
+      setEvents([]);
+      setPending(null);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function selectConversation(id: string) {
+    setActiveId(id);
+    setEvents([]);
+    setPending(null);
+  }
+
+  function deleteConversation(id: string) {
+    setConversations((cs) => {
+      const next = cs.filter((c) => c.id !== id);
+      if (id === activeId) {
+        setActiveId(next[0]?.id || "");
+        setEvents([]);
+        setPending(null);
+      }
+      return next;
+    });
+  }
+
+  function updateActive(mutate: (c: Conversation) => Conversation) {
+    setConversations((cs) => cs.map((c) => (c.id === activeId ? mutate(c) : c)));
+  }
+
+  // ---- messaging -------------------------------------------------------------
   function applyResult(result: ChatResult | null) {
     if (!result) return;
     if (result.replies.length) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", replies: result.replies, routing_reasoning: result.routing_reasoning },
-      ]);
+      updateActive((c) => ({
+        ...c,
+        messages: [...c.messages, { role: "assistant", replies: result.replies, routing_reasoning: result.routing_reasoning }],
+      }));
     }
     setPending(result.pending);
   }
 
   async function send(text: string) {
-    if (!text.trim() || busy || !session) return;
+    if (!text.trim() || busy || !active) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: text }]);
+    updateActive((c) => ({
+      ...c,
+      title: c.messages.length === 0 ? truncate(text) : c.title,
+      messages: [...c.messages, { role: "user", content: text }],
+    }));
     setEvents([]);
     setBusy(true);
     try {
-      const result = await streamPost("/chat", { session, message: text }, (e) => setEvents((p) => [...p, e]));
+      const result = await streamPost("/chat", { session: active.token, message: text }, (e) => setEvents((p) => [...p, e]));
       applyResult(result);
     } catch {
       setEvents((p) => [...p, { type: "error", message: "Backend may be waking up — try again in ~30s." }]);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", replies: [{ agent: "system", content: "Couldn't reach the backend. Render's free tier sleeps when idle — wait ~30s and resend.", metadata: {} }], routing_reasoning: "" },
-      ]);
+      updateActive((c) => ({
+        ...c,
+        messages: [...c.messages, { role: "assistant", replies: [{ agent: "system", content: "Couldn't reach the backend. Render's free tier sleeps when idle — wait ~30s and resend.", metadata: {} }], routing_reasoning: "" }],
+      }));
     } finally {
       setBusy(false);
     }
   }
 
   async function resolve(action: "confirm" | "cancel" | "revise", edit?: string) {
-    if (!session) return;
+    if (!active) return;
     setBusy(true);
     try {
-      const result = await streamPost("/pending", { session, action, edit }, (e) => setEvents((p) => [...p, e]));
+      const result = await streamPost("/pending", { session: active.token, action, edit }, (e) => setEvents((p) => [...p, e]));
       applyResult(result);
     } finally {
       setBusy(false);
@@ -82,24 +149,31 @@ export default function ChatPage() {
   function switchProfile() {
     localStorage.removeItem("cp_session");
     localStorage.removeItem("cp_persona");
+    localStorage.removeItem(CONVOS_KEY);
+    localStorage.removeItem(ACTIVE_KEY);
     window.location.href = "/";
   }
 
-  const empty = messages.length === 0;
+  const empty = !active || active.messages.length === 0;
 
   return (
     <div className="chat-page">
       <aside className="conversation-sidebar">
         <div className="conversation-sidebar-header">
           <span>Conversations</span>
-          <button onClick={() => { setMessages([]); setEvents([]); setPending(null); }} aria-label="New conversation">
-            +
-          </button>
+          <button onClick={newConversation} aria-label="New conversation">+</button>
         </div>
         <div className="conversation-list">
-          <div className="conversation-row active">
-            <button className="conversation-open">Current session</button>
-          </div>
+          {conversations.map((c) => (
+            <div key={c.id} className={`conversation-row ${c.id === activeId ? "active" : ""}`}>
+              <button className="conversation-open" onClick={() => selectConversation(c.id)} title={c.title}>
+                {c.title}
+              </button>
+              <button className="conversation-delete" onClick={() => deleteConversation(c.id)} aria-label="Delete conversation">
+                ×
+              </button>
+            </div>
+          ))}
         </div>
         <div className="sidebar-foot">Multi-agent · LangGraph · MCP · RAG · SQL · HITL</div>
       </aside>
@@ -139,7 +213,7 @@ export default function ChatPage() {
           <div className="chat-scroll-inner">
             {empty && <StarterPrompts onPick={(q) => send(q)} />}
 
-            {messages.map((m, i) =>
+            {active?.messages.map((m, i) =>
               m.role === "user" ? (
                 <div className="user-message" key={i}>
                   <span className="message-label">You</span>
@@ -190,4 +264,12 @@ export default function ChatPage() {
 
 function personaTitle(id: string): string {
   return id === "riya" ? "Software Engineer" : "Senior Engineer · Career Switcher";
+}
+
+function truncate(s: string, n = 40): string {
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function cryptoId(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
