@@ -22,7 +22,10 @@ from careerpilot.core.chunking import chunk_document
 from careerpilot.core.embedding_client import EmbeddingClient, OpenAIEmbeddingClient
 from careerpilot.core.llm_client import LLMClient, OpenAILLMClient
 from careerpilot.fixtures import KNOWLEDGE_DOCS
-from careerpilot.integrations.jobs_data.mcp_client import FakeJobsMCP, JobsSource
+import asyncio
+from pathlib import Path
+
+from careerpilot.integrations.jobs_data.mcp_client import FakeJobsMCP, JobsSource, MCPJobsSource
 from careerpilot.integrations.notifications.notifiers import DemoOutbox
 from careerpilot.integrations.offline.offline_llm import HashingEmbeddingClient, OfflineLLMClient
 from careerpilot.integrations.sql_db.fake_sql import FakeSQLClient
@@ -40,6 +43,8 @@ class SharedResources:
     vector_store: VectorStore
     jobs_source: JobsSource
     offline: bool
+    jobs_mode: str = "fake"  # "live-mcp" | "remote-mcp" | "fake"
+    mcp_aclose: object | None = None  # async callable to tear down the MCP session
 
 
 def _real_mode() -> bool:
@@ -66,14 +71,45 @@ async def build_shared_resources() -> SharedResources:
 
     vector_store = await seed_knowledge_store(embeddings, KNOWLEDGE_DOCS)
 
+    jobs_source, jobs_mode, mcp_aclose = await _build_jobs_source()
+
     return SharedResources(
         llm=llm,
         embeddings=embeddings,
         router=Router(llm),
         vector_store=vector_store,
-        jobs_source=FakeJobsMCP(),  # swap for MCPJobsSource when JOBS_MCP_URL is set
+        jobs_source=jobs_source,
         offline=not real,
+        jobs_mode=jobs_mode,
+        mcp_aclose=mcp_aclose,
     )
+
+
+async def _build_jobs_source() -> tuple[JobsSource, str, object | None]:
+    """Prefer a real MCP source; always fall back to the fake so the app still boots.
+
+    - ``JOBS_MCP_URL`` set  → connect to that remote MCP server (streamable HTTP).
+    - otherwise             → launch the bundled live jobs MCP server over stdio
+                              (real MCP round-trip, live Remotive data).
+    - any failure           → deterministic FakeJobsMCP.
+    """
+    url = os.environ.get("JOBS_MCP_URL")
+    try:
+        if url:
+            source: JobsSource = MCPJobsSource(url=url, token=os.environ.get("JOBS_MCP_TOKEN"))
+            mode = "remote-mcp"
+        else:
+            script = Path(__file__).resolve().parents[2] / "mcp_server" / "jobs_mcp_server.py"
+            if not script.exists():
+                return FakeJobsMCP(), "fake", None
+            source = MCPJobsSource(script_path=str(script))
+            mode = "live-mcp"
+        # Probe once (bounded) so we fall back to the fake if the server or its live
+        # data source isn't reachable — the app must always boot and answer.
+        await asyncio.wait_for(source.call_tool("search_jobs", {"role": "engineer"}), timeout=15)
+        return source, mode, None
+    except Exception:
+        return FakeJobsMCP(), "fake", None
 
 
 def build_session_orchestrator(
@@ -81,8 +117,14 @@ def build_session_orchestrator(
 ) -> Orchestrator:
     caps = resolve_capabilities(persona_id)
     demo_outbox = DemoOutbox()
+    # The deterministic offline embeddings produce lower cosine scores than real
+    # embeddings, so a valid match can fall just under the default 0.2 floor. Relax the
+    # floor in offline mode; real embeddings (OPENAI_API_KEY) keep the stricter 0.2.
+    retrieval_floor = 0.05 if resources.offline else 0.2
     agents = {
-        "knowledge": KnowledgeAgent(resources.llm, resources.embeddings, resources.vector_store, caps),
+        "knowledge": KnowledgeAgent(
+            resources.llm, resources.embeddings, resources.vector_store, caps, retrieval_floor=retrieval_floor
+        ),
         "jobs": JobsAgent(resources.llm, resources.jobs_source, caps),
         "analytics": AnalyticsAgent(resources.llm, FakeSQLClient(role=caps.sql_role), caps),
         "notify": NotifyAgent(resources.llm, caps, demo_outbox=demo_outbox),

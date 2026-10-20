@@ -94,47 +94,63 @@ class FakeJobsMCP:
         return {"error": f"unknown tool {name}"}
 
 
-class MCPJobsSource:
-    """Real adapter: proxies tool calls to an external jobs MCP server.
+def _parse_tool_result(result: Any) -> Any:
+    import json
 
-    The session is opened once per process (by ``bootstrap.build_shared_resources``)
-    and closed on shutdown. ``call_tool`` returns the server's structured content.
+    structured = getattr(result, "structuredContent", None)
+    if isinstance(structured, dict):
+        # FastMCP wraps a non-model return under a "result" key; unwrap it.
+        return structured.get("result", structured)
+    parts = getattr(result, "content", []) or []
+    texts = [getattr(p, "text", "") for p in parts if getattr(p, "type", None) == "text"]
+    blob = "\n".join(t for t in texts if t)
+    try:
+        return json.loads(blob)  # tool returned JSON text — parse so the agent sees fields
+    except (ValueError, TypeError):
+        return {"text": blob}
+
+
+class MCPJobsSource:
+    """Real adapter: a genuine MCP client that opens a fresh session per call.
+
+    A per-call session (rather than a long-lived one) keeps every MCP interaction
+    inside the task that issues it, which avoids anyio cancel-scope errors when the
+    call originates from within LangGraph's node execution. Transport is either a
+    stdio subprocess running the bundled server (``script_path``) or a remote
+    streamable-HTTP server (``url``).
     """
 
-    def __init__(self, session) -> None:  # an initialized mcp.ClientSession
-        self._session = session
+    def __init__(self, *, script_path: str | None = None, url: str | None = None, token: str | None = None) -> None:
+        self._script_path = script_path
+        self._url = url
+        self._token = token
 
     def tool_specs(self) -> list[dict]:
         return _TOOL_SPECS
 
     async def call_tool(self, name: str, arguments: dict) -> Any:
-        result = await self._session.call_tool(name, arguments)
-        structured = getattr(result, "structuredContent", None)
-        if structured is not None:
-            return structured
-        parts = getattr(result, "content", []) or []
-        texts = [getattr(p, "text", "") for p in parts if getattr(p, "type", None) == "text"]
-        return {"text": "\n".join(t for t in texts if t)}
+        from contextlib import AsyncExitStack
 
+        from mcp import ClientSession
 
-async def open_mcp_jobs_session(server_url: str, token: str | None = None):
-    """Open an MCP client session to a jobs MCP server (streamable HTTP).
+        stack = AsyncExitStack()
+        try:
+            if self._url:
+                from mcp.client.streamable_http import streamablehttp_client
 
-    Returns ``(session, aclose)``. Imported lazily so the ``mcp`` SDK is only required
-    when a real server is actually configured.
-    """
-    from contextlib import AsyncExitStack
+                headers = {"Authorization": f"Bearer {self._token}"} if self._token else None
+                read, write, _ = await stack.enter_async_context(streamablehttp_client(self._url, headers=headers))
+            else:
+                import sys
 
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+                from mcp import StdioServerParameters
+                from mcp.client.stdio import stdio_client
 
-    stack = AsyncExitStack()
-    headers = {"Authorization": f"Bearer {token}"} if token else None
-    read, write, _ = await stack.enter_async_context(streamablehttp_client(server_url, headers=headers))
-    session = await stack.enter_async_context(ClientSession(read, write))
-    await session.initialize()
-
-    async def aclose() -> None:
-        await stack.aclose()
-
-    return session, aclose
+                params = StdioServerParameters(command=sys.executable, args=[self._script_path])
+                read, write = await stack.enter_async_context(stdio_client(params))
+            session = await stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+            result = await session.call_tool(name, arguments)
+            return _parse_tool_result(result)
+        finally:
+            await stack.aclose()

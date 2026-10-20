@@ -83,7 +83,11 @@ def _require_session(request_token: str) -> Session:
 @app.get("/health")
 async def health():
     res = getattr(app.state, "resources", None)
-    return {"status": "ok", "offline": getattr(res, "offline", None)}
+    return {
+        "status": "ok",
+        "offline": getattr(res, "offline", None),
+        "jobs_mode": getattr(res, "jobs_mode", None),
+    }
 
 
 @app.get("/demo/personas")

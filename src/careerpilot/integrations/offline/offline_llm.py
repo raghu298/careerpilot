@@ -34,6 +34,24 @@ _ROUTING_KEYWORDS = {
 }
 
 
+def _extract_job_query(text: str) -> tuple[str, str]:
+    """Pull a search role and an optional region out of a free-text job request, so the
+    live job tool is queried with the user's real intent rather than a generic term."""
+    t = text.lower()
+    region = next((r for r in ("worldwide", "remote", "europe", "usa", "india", "uk", "canada") if r in t), "")
+    role = t
+    for junk in (
+        "find", "show", "get", "search", "please", "openings", "opening", "listings",
+        "roles", "role", "jobs", "job", "haven't applied to yet", "haven't applied",
+        "a role i", "i haven't", "applied to", "for me", "that i", " for ", " me ", " a ", " the ",
+        "in bangalore", "in hyderabad", "in india", "in the us", "in europe",
+        "bangalore", "hyderabad", "worldwide", "remote",
+    ):
+        role = role.replace(junk, " ")
+    role = " ".join(role.split()).strip(" ,.")
+    return (role or "software engineer"), region
+
+
 class OfflineLLMClient:
     async def get_structured_output(self, *, system_prompt, user_prompt, schema):
         name = schema.__name__
@@ -52,9 +70,13 @@ class OfflineLLMClient:
             return schema(agents=agents, reasoning=reason)
         if name == "KnowledgeAnswer":
             ctx = user_prompt.split("Context:", 1)[-1].split("Question:", 1)[0].strip()
+            # Use only the user's actual question to pick an answer style — NOT the whole
+            # prompt, whose retrieved context can contain words like "gaps" and wrongly
+            # trigger the resume-fit branch for unrelated questions.
+            question = user_prompt.split("Question:", 1)[-1].strip().lower()
             sources = re.findall(r"\[([^\]]+)\]", ctx)[:3]
             chunks = {m.group(1): m.group(2).strip() for m in re.finditer(r"\[([^\]]+)\]\s*(.*?)(?=\n\n\[|\Z)", ctx, re.S)}
-            answer = self._knowledge_answer(text, chunks)
+            answer = self._knowledge_answer(question, chunks)
             return schema(answer=answer or "No relevant context was found.", citations=sources, answer_found=bool(answer))
         if name == "Draft":
             return schema(channel="email", subject="Following up on my application", body=user_prompt.strip()[:400])
@@ -69,10 +91,10 @@ class OfflineLLMClient:
             return ToolResponse(content=self._summarize(messages))
 
         if "search_jobs" in tool_names:
-            location = next((c for c in ("bangalore", "hyderabad", "remote") if c in user_text.lower()), "")
+            role, location = _extract_job_query(user_text)
             return ToolResponse(
                 content=None,
-                tool_calls=[ToolCall("c1", "search_jobs", {"role": "engineer", "location": location})],
+                tool_calls=[ToolCall("c1", "search_jobs", {"role": role, "location": location})],
             )
         if "run_sql_query" in tool_names:
             query = "SELECT status, COUNT(*) AS count FROM applications GROUP BY status"
