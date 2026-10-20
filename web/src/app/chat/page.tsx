@@ -16,6 +16,8 @@ export default function ChatPage() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [working, setWorking] = useState(true);
+  const [showCitations, setShowCitations] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const trace = useMemo(() => buildTrace(events), [events]);
@@ -108,11 +110,22 @@ export default function ChatPage() {
             <span className="brand-logo">C</span>
             <div>
               <div className="brand-name">CareerPilot</div>
-              <div className="brand-persona">{persona ? persona.name : "…"}</div>
+              <div className="brand-persona">
+                {persona ? persona.name : "…"}
+                {persona && <span className="brand-role"> · {personaTitle(persona.id)}</span>}
+              </div>
             </div>
           </div>
           <div className="header-center">Job-Hunt Copilot</div>
           <div className="header-right">
+            <label className="toggle-label">
+              <input type="checkbox" checked={working} onChange={(e) => setWorking(e.target.checked)} />
+              Working
+            </label>
+            <label className="toggle-label">
+              <input type="checkbox" checked={showCitations} onChange={(e) => setShowCitations(e.target.checked)} />
+              Show citations
+            </label>
             <a href="/outbox">Demo Outbox</a>
             <button className="text-button" onClick={switchProfile}>Switch profile</button>
           </div>
@@ -137,7 +150,7 @@ export default function ChatPage() {
                   <div className="agent-reply" key={`${i}-${j}`}>
                     <span className="message-label">{r.agent}</span>
                     <div className="body">{r.content}</div>
-                    {Array.isArray(r.metadata?.citations) && (r.metadata.citations as string[]).length > 0 && (
+                    {showCitations && Array.isArray(r.metadata?.citations) && (r.metadata.citations as string[]).length > 0 && (
                       <div className="citations">
                         sources
                         <ul>
@@ -170,7 +183,11 @@ export default function ChatPage() {
         </form>
       </main>
 
-      <TracePanel trace={trace} />
+      {working && <TracePanel trace={trace} />}
     </div>
   );
+}
+
+function personaTitle(id: string): string {
+  return id === "riya" ? "Software Engineer" : "Senior Engineer · Career Switcher";
 }
