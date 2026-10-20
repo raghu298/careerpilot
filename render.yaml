@@ -1,0 +1,18 @@
+# Render blueprint for the CareerPilot backend (FastAPI + SSE).
+# Deploy: Render dashboard → New → Blueprint → pick the careerpilot repo → Apply.
+# Free tier, no card. Cold-starts after idle (first request may 503, then recovers).
+services:
+  - type: web
+    name: careerpilot-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # Runs offline (deterministic brain) unless you add OPENAI_API_KEY in the dashboard.
+      # Set FRONTEND_ORIGIN to your Netlify URL once the frontend is deployed.
+      - key: FRONTEND_ORIGIN
+        value: "*"
