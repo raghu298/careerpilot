@@ -33,6 +33,7 @@ from careerpilot.core.observability import get_logger, metrics
 from careerpilot.core.rate_limit import RateLimiter
 from careerpilot.core.safety import redact_pii
 from careerpilot.fixtures import KNOWLEDGE_DOCS
+from api.persistence import PersistenceStore
 from api.sessions import Session, SessionStore
 
 logger = get_logger("api")
@@ -51,7 +52,9 @@ def _client_ip(request: Request) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.resources = await build_shared_resources()
-    app.state.sessions = SessionStore(app.state.resources)
+    app.state.persistence = PersistenceStore()
+    app.state.persistence.purge_expired(24 * 60 * 60)
+    app.state.sessions = SessionStore(app.state.resources, app.state.persistence)
     yield
 
 
@@ -219,7 +222,9 @@ async def chat(req: ChatRequest):
     logger.info("chat persona=%s msg=%r", session.persona_id, redact_pii(req.message)[:160])
 
     async def factory(on_event):
-        return await session.orchestrator.handle(req.message, on_event=on_event)
+        out = await session.orchestrator.handle(req.message, on_event=on_event)
+        app.state.sessions.persist_memory(session)  # durable conversation memory
+        return out
 
     return EventSourceResponse(_stream(factory))
 
@@ -268,6 +273,7 @@ async def set_applications(req: ApplicationsRequest):
     session = _require_session(req.session)
     apps = [a.model_dump() for a in req.applications]
     count = session.sql_client.replace_applications(apps)
+    app.state.sessions.persist_applications(session)  # survive restart
     return {"ok": True, "count": count}
 
 

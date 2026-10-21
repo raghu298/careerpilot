@@ -15,9 +15,9 @@ import time
 class _Bucket:
     __slots__ = ("tokens", "last")
 
-    def __init__(self, capacity: float) -> None:
+    def __init__(self, capacity: float, now: float) -> None:
         self.tokens = capacity
-        self.last = time.monotonic()
+        self.last = now
 
 
 class RateLimiter:
@@ -33,7 +33,7 @@ class RateLimiter:
         with self._lock:
             b = self._buckets.get(key)
             if b is None:
-                b = self._buckets[key] = _Bucket(self._capacity)
+                b = self._buckets[key] = _Bucket(self._capacity, now)
             # Refill since last check.
             b.tokens = min(self._capacity, b.tokens + (now - b.last) * self._rate)
             b.last = now

@@ -80,6 +80,12 @@ class SqliteSQLClient:
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
 
+    def all_rows(self) -> list[dict]:
+        """Every application as a dict (for durable persistence)."""
+        cols = ", ".join(_COLUMNS)
+        rows = self._conn.execute(f"SELECT {cols} FROM applications ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
     # ---- SQLClient protocol (read-only) -------------------------------------
 
     async def schema_description(self) -> str:

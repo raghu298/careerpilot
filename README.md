@@ -112,10 +112,13 @@ tests/unit/         # fake-backed tests — no network, no API key
 # backend (offline — no key needed)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                            # 31 offline tests (no network, no key)
+pytest -q                            # 48 offline tests (no network, no key)
 python -m evaluation.run_knowledge_eval   # RAG regression + Recall@k/MRR (offline)
 python -m evaluation.run_agent_eval       # jobs relevance + NL→SQL + read-only guardrail
 python scripts/chat.py               # CLI: try every agent from the terminal
+
+# live smoke test (real HTTP against a running/deployed server)
+SMOKE_BASE_URL=https://careerpilot-seeh.onrender.com python scripts/smoke_test_api.py
 
 # web app
 uvicorn api.main:app --reload --port 8000
@@ -131,6 +134,7 @@ are visible only to Arjun, enforced in the retrieval query, not by prompt text.
 | Capability | Set | Falls back to |
 |---|---|---|
 | Real models | `OPENAI_API_KEY` | deterministic offline brain |
+| Durable sessions (survive restart) | `CP_DB_PATH` → a persistent disk (or external Postgres) | SQLite file (durable on any disk host; Render's *free* tier filesystem is ephemeral) |
 | Application tracker | `DATABASE_URL` (+ read-only role) | **real in-memory SQLite** (you load your own applications) |
 | Live job search | default: live RemoteOK + Remotive (no key); or `JOBS_MCP_URL`, `JOBS_MCP_TOKEN` | deterministic fake MCP |
 | Real outreach | `SLACK_BOT_TOKEN` / `RESEND_API_KEY` … | Demo Outbox capture |
