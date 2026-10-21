@@ -236,3 +236,9 @@ a { color: var(--accent); text-decoration: none; }
 .btn-primary { padding: 9px 18px; border-radius: 9px; border: none; background: var(--accent); color: white; font-weight: 600; font-size: 14px; }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 .btn-ghost { padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; }
+.modal-field-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-field-head .modal-label { margin-bottom: 5px; }
+.btn-upload { padding: 5px 11px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-upload:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.btn-upload:disabled { opacity: .55; cursor: wait; }
+.modal-error { background: #fdecec; border: 1px solid #f5c2c2; color: #a12222; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 12px; line-height: 1.45; }
