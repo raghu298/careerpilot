@@ -111,10 +111,21 @@ async def _build_jobs_source() -> tuple[JobsSource, str, object | None]:
                 return FakeJobsMCP(), "fake", None
             source = MCPJobsSource(script_path=str(script))
             mode = "live-mcp"
-        # Probe once (bounded) so we fall back to the fake if the server or its live
-        # data source isn't reachable — the app must always boot and answer.
-        await asyncio.wait_for(source.call_tool("search_jobs", {"role": "engineer"}), timeout=15)
-        return source, mode, None
+        # Probe (bounded, with one retry) so we fall back to the fake only if the MCP
+        # server genuinely can't answer — the app must always boot. The timeout is
+        # generous because on a cold host the stdio subprocess boot PLUS the first live
+        # fetch (RemoteOK can be slow) can take 20s+; too tight a timeout would silently
+        # and permanently downgrade production to fake data.
+        last: Exception | None = None
+        for attempt in range(2):
+            try:
+                await asyncio.wait_for(
+                    source.call_tool("search_jobs", {"role": "engineer"}), timeout=45
+                )
+                return source, mode, None
+            except Exception as exc:  # noqa: PERF203
+                last = exc
+        raise last or RuntimeError("jobs MCP probe failed")
     except Exception:
         return FakeJobsMCP(), "fake", None
 
