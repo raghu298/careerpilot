@@ -112,7 +112,7 @@ tests/unit/         # fake-backed tests — no network, no API key
 # backend (offline — no key needed)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                            # 48 offline tests (no network, no key)
+pytest -q                            # 53 offline tests (no network, no key)
 python -m evaluation.run_knowledge_eval   # RAG regression + Recall@k/MRR (offline)
 python -m evaluation.run_agent_eval       # jobs relevance + NL→SQL + read-only guardrail
 python scripts/chat.py               # CLI: try every agent from the terminal

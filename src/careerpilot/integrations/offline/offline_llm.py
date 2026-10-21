@@ -220,7 +220,7 @@ class OfflineLLMClient:
         else:
             subject = f"Following up on the{role_phrase or ''} application{comp_phrase}".replace("  ", " ").strip()
             body = (
-                f"Hi{(' ' + company) if company else ' there'},\n\n"
+                "Hi there,\n\n"
                 f"I recently applied for the{role_phrase or ' role'}{comp_phrase} and wanted to follow up to "
                 "reaffirm my strong interest. I'd love to learn about the next steps in your process.\n\n"
                 "If it's helpful, I'm glad to share more on my relevant experience or provide references. "
@@ -334,9 +334,12 @@ class OfflineLLMClient:
                     out.append("Your applications by status: " +
                                ", ".join(f"{r['status']} ({r['count']})" for r in data) + ".")
                 else:
-                    out.append("Here's what the tracker shows:")
+                    n = len(data)
+                    out.append(f"{n} application{'s' if n != 1 else ''} match:")
                     for row in data[:10]:
                         out.append("• " + ", ".join(f"{k}: {v}" for k, v in row.items()))
+                    if n > 10:
+                        out.append(f"…and {n - 10} more.")
             elif isinstance(p, dict) and p.get("name"):
                 name = p.get("name")
                 if p.get("error"):
