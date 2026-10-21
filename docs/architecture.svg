@@ -66,18 +66,38 @@
   <text x="470" y="420" fill="#94a0bd" text-anchor="middle" font-weight="600">Data sources &amp; tools (protocol + real adapter + offline fake)</text>
   <g fill="#94a0bd" text-anchor="middle" font-size="12">
     <text x="140" y="448">pgvector store</text>
-    <text x="360" y="448">jobs MCP server</text>
-    <text x="580" y="448">read-only Postgres</text>
+    <text x="360" y="448">jobs MCP (RemoteOK + Remotive)</text>
+    <text x="580" y="448">read-only SQL (SQLite / Postgres)</text>
     <text x="800" y="448">Slack / Resend → Demo Outbox</text>
   </g>
 
-  <!-- foundation -->
-  <rect x="40" y="498" width="860" height="86" rx="10" fill="#161c2b" stroke="#2a3350"/>
-  <text x="470" y="522" fill="#e8ecf5" text-anchor="middle" font-weight="600">Shared foundation (ports &amp; adapters)</text>
-  <g fill="#94a0bd" text-anchor="middle" font-size="12">
-    <text x="150" y="552">LLM / Embedding</text><text x="150" y="568">gateway protocols</text>
-    <text x="360" y="552">conversation</text><text x="360" y="568">memory</text>
-    <text x="560" y="552">schema + SQL + HITL</text><text x="560" y="568">guardrails</text>
-    <text x="780" y="552">tool cache +</text><text x="780" y="568">parallel tool calls</text>
+  <!-- shared foundation (used by every agent) -->
+  <rect x="40" y="498" width="860" height="104" rx="10" fill="#161c2b" stroke="#2a3350"/>
+  <text x="470" y="520" fill="#e8ecf5" text-anchor="middle" font-weight="600">Shared foundation — used by every agent (ports &amp; adapters)</text>
+  <g text-anchor="middle" font-size="11">
+    <rect x="54" y="532" width="158" height="58" rx="7" fill="#141a28" stroke="#2a3350"/>
+    <text x="133" y="552" fill="#e8ecf5" font-weight="600">Memory &amp; Context</text>
+    <text x="133" y="570" fill="#94a0bd">conversation state</text>
+    <text x="133" y="584" fill="#94a0bd">(5-turn window)</text>
+
+    <rect x="224" y="532" width="158" height="58" rx="7" fill="#141a28" stroke="#2a3350"/>
+    <text x="303" y="552" fill="#e8ecf5" font-weight="600">Caching</text>
+    <text x="303" y="570" fill="#94a0bd">session · tool-result</text>
+    <text x="303" y="584" fill="#94a0bd">· embedding (LRU)</text>
+
+    <rect x="394" y="532" width="158" height="58" rx="7" fill="#141a28" stroke="#2dd4a7"/>
+    <text x="473" y="552" fill="#e8ecf5" font-weight="600">Guardrails &amp; Safety</text>
+    <text x="473" y="570" fill="#94a0bd">SQL read-only · PII</text>
+    <text x="473" y="584" fill="#94a0bd">redaction · content</text>
+
+    <rect x="564" y="532" width="158" height="58" rx="7" fill="#141a28" stroke="#5b8cff"/>
+    <text x="643" y="552" fill="#e8ecf5" font-weight="600">LLM Gateway</text>
+    <text x="643" y="570" fill="#94a0bd">model routing ·</text>
+    <text x="643" y="584" fill="#94a0bd">rate limiting (429)</text>
+
+    <rect x="734" y="532" width="152" height="58" rx="7" fill="#141a28" stroke="#fbbf24"/>
+    <text x="810" y="552" fill="#e8ecf5" font-weight="600">Observability</text>
+    <text x="810" y="570" fill="#94a0bd">/metrics · tracing</text>
+    <text x="810" y="584" fill="#94a0bd">· evaluation harness</text>
   </g>
 </svg>
