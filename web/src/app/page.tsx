@@ -1,28 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createSession, getPersonas } from "@/lib/api";
+import { createSession, getPersonas, warmBackend } from "@/lib/api";
 import type { Persona } from "@/lib/types";
 
 export default function Landing() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [busy, setBusy] = useState(false);
+  const [waking, setWaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getPersonas()
-      .then(setPersonas)
-      .catch(() => setError("Couldn't reach the CareerPilot API — the backend may be waking up. Refresh in ~30s."));
+    warmBackend(); // start the dyno booting immediately
+    getPersonas(() => setWaking(true))
+      .then((ps) => {
+        setPersonas(ps);
+        setWaking(false);
+      })
+      .catch(() => {
+        setWaking(false);
+        setError("Couldn't reach the CareerPilot API. It may be waking up — refresh in ~30s.");
+      });
   }, []);
 
   async function choose(p: Persona) {
     setBusy(true);
+    setError(null);
     try {
-      const token = await createSession(p.id);
+      const token = await createSession(p.id, () => setWaking(true));
+      setWaking(false);
       localStorage.setItem("cp_session", token);
       localStorage.setItem("cp_persona", JSON.stringify(p));
       window.location.href = "/chat";
     } catch {
+      setWaking(false);
       setError("Couldn't start a session. Try again in a moment.");
       setBusy(false);
     }
@@ -41,7 +52,13 @@ export default function Landing() {
       </div>
       <div className="chooser-right">
         <h2 className="chooser-title">Pick a demo profile — no sign-up</h2>
+        {waking && !error && (
+          <p className="chooser-waking">
+            Waking the backend… Render&apos;s free tier sleeps when idle, so the first load can take ~30–60s. Hang tight.
+          </p>
+        )}
         {error && <p className="chooser-error">{error}</p>}
+        {!personas.length && !waking && !error && <p className="chooser-waking">Loading…</p>}
         {personas.map((p) => (
           <button key={p.id} className="persona-card" disabled={busy} onClick={() => choose(p)}>
             <div className="pname">{p.name}</div>

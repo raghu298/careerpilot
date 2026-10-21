@@ -3,18 +3,60 @@ import type { ChatResult, Persona, TraceEvent } from "./types";
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:8000";
 
-export async function getPersonas(): Promise<Persona[]> {
-  const res = await fetch(`${API_BASE}/demo/personas`);
+/**
+ * fetch with a per-attempt timeout and retries. The backend runs on Render's free
+ * tier, which sleeps after ~15 min idle; the first request then takes 30–60s to wake.
+ * Retrying across that window (instead of failing on the first slow/aborted attempt)
+ * is what stops the app from *looking* down during a cold start. `onWaking` fires once
+ * when the first attempt doesn't return quickly, so the UI can show a wake-up notice.
+ */
+async function fetchRetry(
+  path: string,
+  init: RequestInit = {},
+  { tries = 8, timeoutMs = 15000, gapMs = 2500, onWaking }: {
+    tries?: number; timeoutMs?: number; gapMs?: number; onWaking?: () => void;
+  } = {},
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { ...init, signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.ok) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+    }
+    if (i === 0) onWaking?.(); // first miss → almost certainly a cold start
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, gapMs));
+  }
+  throw lastErr;
+}
+
+/** Fire-and-forget wake-up ping, so the dyno starts booting the moment a page loads. */
+export function warmBackend(): void {
+  void fetch(`${API_BASE}/health`).catch(() => {});
+}
+
+export async function getPersonas(onWaking?: () => void): Promise<Persona[]> {
+  const res = await fetchRetry("/demo/personas", {}, { onWaking });
   const data = await res.json();
   return data.personas as Persona[];
 }
 
-export async function createSession(personaId: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/demo/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ persona_id: personaId }),
-  });
+export async function createSession(personaId: string, onWaking?: () => void): Promise<string> {
+  const res = await fetchRetry(
+    "/demo/sessions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona_id: personaId }),
+    },
+    { onWaking },
+  );
   const data = await res.json();
   return data.session as string;
 }

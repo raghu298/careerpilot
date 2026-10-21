@@ -2,7 +2,8 @@
 
 **Live demo:** [careerpilot-raghu298.netlify.app](https://careerpilot-raghu298.netlify.app) ·
 **API:** [careerpilot-seeh.onrender.com/health](https://careerpilot-seeh.onrender.com/health)
-*(backend is on Render's free tier — the first request after idle takes ~30–60s to wake.)*
+*(backend is on Render's free tier — it sleeps after ~15 min idle; the app warms it on
+load and retries through the ~30–60s cold start, so just wait rather than refreshing.)*
 
 **Ask one question in plain English. A router sends it to the right specialist agent(s),
 they run in parallel, and you get one combined answer — with every routing decision and

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createSession, setDocs, streamPost } from "@/lib/api";
+import { createSession, setDocs, streamPost, warmBackend } from "@/lib/api";
 import { buildTrace } from "@/lib/trace";
 import type { ChatResult, Message, Pending, Persona, TraceEvent } from "@/lib/types";
 import TracePanel from "@/components/TracePanel";
@@ -34,6 +34,7 @@ export default function ChatPage() {
 
   // ---- load / persist --------------------------------------------------------
   useEffect(() => {
+    warmBackend(); // wake the dyno while the user reads, so the first message isn't slow
     const p = localStorage.getItem("cp_persona");
     const tok = localStorage.getItem("cp_session");
     if (!tok) {
