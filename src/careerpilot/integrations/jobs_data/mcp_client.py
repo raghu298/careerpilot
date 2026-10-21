@@ -45,6 +45,21 @@ _TOOL_SPECS = [
     {
         "type": "function",
         "function": {
+            "name": "salary_insights",
+            "description": "Typical (median) salary range for a role, aggregated from live salary-disclosed postings. Use for 'what do X roles pay', 'salary range for X', 'market rate'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "description": "e.g. 'senior genai engineer'"},
+                    "location": {"type": "string"},
+                },
+                "required": ["role"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company",
             "description": "Short profile for a company (industry, size, what they build).",
             "parameters": {
@@ -87,6 +102,26 @@ class FakeJobsMCP:
                 and (not loc or loc in j["location"].lower())
             ]
             return {"count": len(matches), "jobs": matches or _JOBS}
+        if name == "salary_insights":
+            role = str(arguments.get("role", "")).lower()
+            loc = str(arguments.get("location", "")).lower()
+            matches = [
+                j for j in _JOBS
+                if (not role or any(w in j["title"].lower() or w in j["stack"].lower() for w in role.split()))
+                and (not loc or loc in j["location"].lower())
+            ] or _JOBS
+            lpas = sorted(j["salary_lpa"] for j in matches)
+            mid = len(lpas) // 2
+            median = lpas[mid] if len(lpas) % 2 else (lpas[mid - 1] + lpas[mid]) / 2
+            return {
+                "role": arguments.get("role", ""),
+                "sample_size": len(lpas),
+                "typical_range": f"₹{median:g} LPA",
+                "low": f"₹{min(lpas)} LPA",
+                "high": f"₹{max(lpas)} LPA",
+                "basis": "median of sample postings",
+                "source": "fake (offline)",
+            }
         if name == "get_company":
             key = str(arguments.get("name", "")).lower().strip()
             profile = _COMPANIES.get(key)

@@ -18,14 +18,15 @@ seeker actually feels.
 > server / Slack / Resend to light up the real adapters. Nothing changes in the agent code
 > because everything depends on protocols, not vendor SDKs.
 
-## The four agents
+## The five agents
 
 | Ask it… | Agent | How it works |
 |---|---|---|
 | *"Does my resume fit this JD? What are my gaps?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer). Upload your own résumé/JD (PDF/TXT) via **"Use my resume"**. |
-| *"Find GenAI roles at Nimbus Labs"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`) against **live postings** (RemoteOK + Remotive); a role-plus-company question drives both tools in one loop. |
-| *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over a **real SQLite** tracker of *your* applications (add them via **"My applications"**); 3 stacked guardrails. |
+| *"Find GenAI roles at Nimbus Labs"* · *"What do senior GenAI roles pay?"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`, `salary_insights`) against **live postings** (RemoteOK + Remotive); salary bands are the **median of live salary-disclosed postings** — real figures, never invented. |
+| *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over a **real SQLite** tracker of *your* applications (add them via **"My applications"**, append one straight from search, or **export to CSV**); 3 stacked guardrails. |
 | *"Draft a follow-up email to the recruiter at Acme"* | **Notify** | Drafts tailored outreach and **stages it** — sends only after you confirm (human-in-the-loop) |
+| *"Prep me for the interview — what will they ask?"* | **Interview** | Builds a grounded mock-interview plan from your resume + target JD: likely questions grouped by type (technical / behavioral / system-design / role-specific) with a talking point for each. |
 
 A single request can fan out to several agents at once, e.g.
 *"Find a role I haven't applied to yet and draft a cover letter for it"* → **Jobs +
@@ -45,7 +46,7 @@ START → router → (Send fan-out) → run_agent × N → aggregate → END
 
 - **Router** (`orchestrator/router.py`) — an LLM reasons about intent, but its decision is
   forced through a Pydantic `RoutingDecision` (`Literal["knowledge","jobs","analytics",
-  "notify"]`). Invalid output is retried, never trusted.
+  "notify","interview"]`). Invalid output is retried, never trusted.
 - **Fan-out** — a conditional edge emits one `Send` per selected agent, so they run
   concurrently; a dict reducer merges each agent's result back into shared state.
 - **HITL** — the `aggregate` node calls LangGraph `interrupt()` when a `ConfirmableAgent`
@@ -92,15 +93,16 @@ src/careerpilot/
   orchestrator/     # LangGraph graph, schema-guarded router, conversation memory
   agents/
     knowledge/      # RAG agent (resume / JD / career guides)
-    jobs/           # tool-calling agent over the jobs MCP server
+    jobs/           # tool-calling agent over the jobs MCP server (search + company + salary)
     analytics/      # NL → read-only SQL over the application tracker
     notify/         # HITL outreach drafter (ConfirmableAgent)
+    interview/      # RAG-grounded mock-interview planner
   core/             # protocols + shared foundation: tool-loop, caches, LLM gateway, rate limit, safety, observability
   integrations/     # adapters: pgvector, SQL (Postgres + real SQLite), jobs MCP (+fake), notifiers, offline brain
   access_policy.py  # persona → typed capability set (enforced before agents are built)
   bootstrap.py      # shared + per-session wiring reused by every entry point
 api/                # FastAPI backend: sessions, chat (SSE), pending (HITL), docs, applications, outbox
-mcp_server/         # real MCP server: live job search over RemoteOK + Remotive
+mcp_server/         # real MCP server: live job search + salary insights over RemoteOK + Remotive
 web/                # Next.js frontend (chat, live trace, persona chooser, résumé + applications editors)
 evaluation/         # golden-dataset eval harness: RAG regression + Recall@k/MRR, agent correctness, optional DeepEval
 tests/unit/         # fake-backed tests — no network, no API key
@@ -112,7 +114,7 @@ tests/unit/         # fake-backed tests — no network, no API key
 # backend (offline — no key needed)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                            # 53 offline tests (no network, no key)
+pytest -q                            # 60 offline tests (no network, no key)
 python -m evaluation.run_knowledge_eval   # RAG regression + Recall@k/MRR (offline)
 python -m evaluation.run_agent_eval       # jobs relevance + NL→SQL + read-only guardrail
 python scripts/chat.py               # CLI: try every agent from the terminal

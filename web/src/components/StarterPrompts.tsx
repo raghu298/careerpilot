@@ -2,6 +2,7 @@ const STARTERS: { agent: string; icon: string; question: string }[] = [
   { agent: "Knowledge", icon: "RAG", question: "Does my resume fit the Senior GenAI JD? What are my gaps?" },
   { agent: "Jobs", icon: "MCP", question: "Find senior GenAI roles in Bangalore" },
   { agent: "Analytics", icon: "SQL", question: "How many of my applications got a response, and which are stale?" },
+  { agent: "Interview", icon: "PREP", question: "Prep me for the interview — what questions will they ask?" },
   { agent: "Notify", icon: "HITL", question: "Find a role I haven't applied to yet and draft a cover letter for it" },
 ];
 

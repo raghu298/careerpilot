@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from careerpilot.access_policy import resolve_capabilities
 from careerpilot.agents.analytics.agent import AnalyticsAgent
 from careerpilot.agents.knowledge.agent import KnowledgeAgent
+from careerpilot.agents.interview.agent import InterviewPrepAgent
 from careerpilot.agents.jobs.agent import JobsAgent
 from careerpilot.agents.notify.agent import NotifyAgent
 from careerpilot.core.chunking import chunk_document
@@ -146,6 +147,12 @@ def build_session_orchestrator(
         "jobs": JobsAgent(resources.llm, resources.jobs_source, caps),
         "analytics": AnalyticsAgent(resources.llm, sql_client, caps),
         "notify": NotifyAgent(resources.llm, caps, demo_outbox=demo_outbox),
+        "interview": InterviewPrepAgent(
+            resources.llm,
+            resources.embeddings,
+            vector_store or resources.vector_store,
+            caps,
+        ),
     }
     orch = Orchestrator(resources.router, agents, memory=memory)
     # Expose the session outbox so the API's /outbox endpoint can read captures.

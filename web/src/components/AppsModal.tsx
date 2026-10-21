@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApplicationRow, getApplications, setApplications } from "@/lib/api";
+import { ApplicationRow, downloadApplicationsCsv, getApplications, setApplications } from "@/lib/api";
 
 const STATUSES = ["Applied", "Screening", "Interviewing", "Offer", "Rejected", "Ghosted"];
 
@@ -86,6 +86,14 @@ export default function AppsModal({
         )}
 
         <div className="modal-actions">
+          <button
+            className="btn-ghost"
+            onClick={() => downloadApplicationsCsv(token)}
+            disabled={loading}
+            title="Download your tracker as a CSV file"
+          >
+            ↓ Export CSV
+          </button>
           <button className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn-primary" onClick={save} disabled={saving || loading}>
             {saving ? "Saving…" : "Save my applications"}

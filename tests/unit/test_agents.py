@@ -1,5 +1,7 @@
 from careerpilot.agents.analytics.agent import AnalyticsAgent
 from careerpilot.agents.jobs.agent import JobsAgent
+from careerpilot.agents.interview.agent import InterviewPrepAgent
+from careerpilot.agents.interview.schemas import InterviewPlan, InterviewQuestion
 from careerpilot.agents.knowledge.agent import KnowledgeAgent
 from careerpilot.agents.knowledge.schemas import KnowledgeAnswer
 from careerpilot.agents.notify.agent import Draft, NotifyAgent
@@ -44,6 +46,58 @@ async def test_knowledge_agent_respects_scope():
     assert result.metadata["answer_found"] is False  # nothing in scope was retrieved
 
 
+async def test_interview_agent_builds_grounded_plan():
+    store = InMemoryVectorStore()
+    embed = FakeEmbeddingClient()
+    [vec] = await embed.embed(["interview"])
+    await store.add(content="interview prep: lead with impact", embedding=vec,
+                    source="interview-guide", access_scope="general")
+    plan = InterviewPlan(
+        focus="Lead with your LLM projects.",
+        questions=[
+            InterviewQuestion(category="technical", question="Explain RAG.", talking_point="Cite your project."),
+            InterviewQuestion(category="behavioral", question="A conflict?", talking_point="Use STAR."),
+        ],
+        grounded=True,
+    )
+    llm = ScriptedLLMClient(structured={"InterviewPlan": plan})
+    agent = InterviewPrepAgent(llm, embed, store, _caps())
+    result = await agent.handle("prep me for the interview")
+    assert "Explain RAG." in result.content
+    assert "**Technical**" in result.content and "**Behavioral**" in result.content
+    assert result.metadata["grounded"] is True
+    assert len(result.metadata["questions"]) == 2
+
+
+async def test_offline_interview_plan_is_grounded_in_resume_and_jd():
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    ctx = (
+        "[my-resume] Python, FastAPI and PostgreSQL engineer. Gaps: kubernetes.\n\n"
+        "[jd-target] Senior GenAI Engineer. Required: Python, kubernetes, LLM."
+    )
+    plan = await OfflineLLMClient().get_structured_output(
+        system_prompt="", user_prompt=f"Context:\n{ctx}\n\nRequest: prep me", schema=InterviewPlan
+    )
+    assert plan.grounded is True
+    assert plan.questions
+    cats = {q.category for q in plan.questions}
+    assert {"technical", "behavioral", "role-specific"} <= cats
+    # A JD skill the resume lacks must surface an honest ramp-up talking point.
+    assert any("kubernetes" in q.question.lower() or "kubernetes" in q.talking_point.lower()
+               for q in plan.questions)
+    assert "Senior Genai Engineer".lower() in " ".join(q.question for q in plan.questions).lower()
+
+
+async def test_interview_agent_requires_knowledge_access():
+    agent = InterviewPrepAgent(
+        ScriptedLLMClient(structured={}), FakeEmbeddingClient(), InMemoryVectorStore(),
+        _caps(knowledge_labels=()),
+    )
+    result = await agent.handle("prep me")
+    assert "access" in result.content.lower()
+
+
 async def test_jobs_agent_tool_calling_loop():
     llm = ScriptedLLMClient(
         tool_responses=[
@@ -55,6 +109,23 @@ async def test_jobs_agent_tool_calling_loop():
     result = await agent.handle("find engineer roles in Bangalore")
     assert "2 roles" in result.content
     assert any("search_jobs" in c for c in result.metadata["citations"])
+
+
+async def test_fake_mcp_salary_insights_aggregates():
+    out = await FakeJobsMCP().call_tool("salary_insights", {"role": "genai engineer"})
+    assert out["sample_size"] >= 1
+    assert "LPA" in out["typical_range"]
+    assert out["low"] and out["high"]
+
+
+async def test_jobs_agent_reports_salary_via_offline_brain():
+    """A pay question drives the salary_insights tool through the real offline brain."""
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    agent = JobsAgent(OfflineLLMClient(), FakeJobsMCP(), _caps())
+    result = await agent.handle("what do senior genai engineer roles pay?")
+    assert "Typical pay" in result.content
+    assert any("salary_insights" in c for c in result.metadata["citations"])
 
 
 async def test_analytics_agent_runs_readonly_sql():

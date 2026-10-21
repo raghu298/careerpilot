@@ -66,3 +66,11 @@ async def test_offline_router_current_request_only_jobs():
         "find remote backend engineer roles", history
     )
     assert decision.agents == ["jobs"]
+
+
+async def test_offline_router_routes_interview():
+    """Mock-interview requests go to the interview agent, not knowledge."""
+    decision = await Router(OfflineLLMClient()).route(
+        "prep me for the interview — what questions will they ask?"
+    )
+    assert decision.agents == ["interview"]

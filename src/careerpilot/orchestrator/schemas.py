@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-AgentName = Literal["knowledge", "jobs", "analytics", "notify"]
+AgentName = Literal["knowledge", "jobs", "analytics", "notify", "interview"]
 
 
 class RoutingDecision(BaseModel):

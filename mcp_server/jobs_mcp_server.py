@@ -77,7 +77,8 @@ def _topic_terms(role: str) -> list[str]:
     return [t for t in terms if not (t in seen or seen.add(t))]
 
 
-def _norm(*, title, company, location, tags, description, url, salary="", source) -> dict:
+def _norm(*, title, company, location, tags, description, url, salary="",
+          salary_min=None, salary_max=None, source) -> dict:
     """Common internal record so both feeds rank identically."""
     return {
         "title": title or "",
@@ -87,6 +88,8 @@ def _norm(*, title, company, location, tags, description, url, salary="", source
         "description": description or "",
         "url": url or "",
         "salary": salary or "",
+        "salary_min": salary_min,  # numeric (RemoteOK) — used for salary aggregation
+        "salary_max": salary_max,
         "source": source,
     }
 
@@ -98,7 +101,8 @@ def _fetch_remoteok() -> list[dict]:
         _norm(
             title=j.get("position"), company=j.get("company"), location=j.get("location"),
             tags=j.get("tags"), description=j.get("description"), url=j.get("url"),
-            salary=_salary_range(j.get("salary_min"), j.get("salary_max")), source="remoteok",
+            salary=_salary_range(j.get("salary_min"), j.get("salary_max")),
+            salary_min=j.get("salary_min"), salary_max=j.get("salary_max"), source="remoteok",
         )
         for j in data
         if isinstance(j, dict) and j.get("position")
@@ -217,6 +221,58 @@ def search_jobs(role: str, location: str = "") -> dict:
     return {
         "count": len(jobs), "jobs": jobs, "terms": terms,
         "source": "remoteok + remotive (live)",
+    }
+
+
+def _median(nums: list[float]) -> float:
+    s = sorted(nums)
+    n = len(s)
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2
+
+
+@mcp.tool()
+def salary_insights(role: str, location: str = "") -> dict:
+    """Aggregate real salary ranges for a role from live salary-tagged postings.
+
+    Only RemoteOK postings carry structured salary numbers, so the sample is drawn from
+    the postings that actually match the role AND disclose pay — the figures are real,
+    never invented. Returns the typical (median) band plus the low/high across the
+    sample so the user sees the spread, not a single made-up number.
+    """
+    terms = _topic_terms(role)
+    role_kinds = [k for k in _ROLE_KINDS if re.search(r"\b" + k + r"\b", role.lower())]
+    pool: list[dict] = []
+    try:
+        pool += _fetch_remoteok()
+    except Exception as exc:
+        return {"role": role, "sample_size": 0, "error": f"salary source unavailable: {exc}"}
+
+    ranked = _rank(terms, pool, location, role_kinds)[:60]
+    # Keep only plausible annual-salary pairs — RemoteOK mixes in per-task/hourly and
+    # placeholder figures that would otherwise drag the range to "$0k" or a huge outlier.
+    pairs = [
+        (j["salary_min"], j["salary_max"]) for j in ranked
+        if j.get("salary_min") and j.get("salary_max")
+        and 10_000 <= j["salary_min"] <= 1_000_000 and j["salary_max"] <= 2_000_000
+        and j["salary_max"] >= j["salary_min"]
+    ]
+    lows = [p[0] for p in pairs]
+    highs = [p[1] for p in pairs]
+    if not lows:
+        return {
+            "role": role, "sample_size": 0,
+            "note": "No salary-disclosed postings matched that role right now — try a broader title.",
+        }
+    k = lambda v: f"${int(v / 1000)}k"  # noqa: E731
+    return {
+        "role": role,
+        "sample_size": len(lows),
+        "typical_range": f"{k(_median(lows))}–{k(_median(highs))}",
+        "low": k(min(lows)),
+        "high": k(max(highs)),
+        "basis": "median of live salary-disclosed postings",
+        "source": "remoteok (live)",
     }
 
 

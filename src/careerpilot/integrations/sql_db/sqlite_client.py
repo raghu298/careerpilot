@@ -77,6 +77,21 @@ class SqliteSQLClient:
         self._insert(rows)
         return len(rows)
 
+    def add_application(self, app: dict) -> int:
+        """Append one application (e.g. a job the user saved from search). Returns the
+        new total row count. Skips an exact company+role duplicate."""
+        company = (app.get("company") or "").strip()
+        role = (app.get("role") or "").strip()
+        if not company or not role:
+            return self.count()
+        exists = self._conn.execute(
+            "SELECT 1 FROM applications WHERE lower(company)=lower(?) AND lower(role)=lower(?)",
+            (company, role),
+        ).fetchone()
+        if not exists:
+            self._insert([tuple((app.get(c) or None) for c in _COLUMNS)])
+        return self.count()
+
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
 

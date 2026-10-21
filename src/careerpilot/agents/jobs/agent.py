@@ -15,8 +15,10 @@ from careerpilot.core.tool_loop import run_tool_loop
 from careerpilot.integrations.jobs_data.mcp_client import JobsSource
 
 _SYSTEM_PROMPT = """You are the jobs sub-agent of a career assistant.
-Use the job tools to find live openings and look up company information before
-answering. List roles only from tool results — never invent a posting. If nothing
+Use the job tools to find live openings, look up company information, and report
+salary ranges before answering. For a pay/compensation question use salary_insights;
+for openings use search_jobs; for a company use get_company. Report roles and salary
+figures only from tool results — never invent a posting or a number. If nothing
 matches, say so plainly. You do not have access to the user's resume or their
 application history.
 """

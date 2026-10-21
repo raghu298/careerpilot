@@ -23,13 +23,15 @@ Choose only the agents actually required — a request may need one agent or sev
 - knowledge: answers from the user's own career documents and career-advice guides —
   their resume, a specific job description they're considering, and general guidance on
   resumes, interviews, and salary negotiation. Use it for "does my resume fit this
-  role", "what are my gaps for this JD", or "how should I answer a behavioural
-  question". It does NOT browse live job listings and does NOT see the application
-  tracker.
-- jobs: searches LIVE external job postings and company information through job-board
-  tools (find openings for a role/location, look up a company). Use it for "find me
-  backend roles in Bangalore" or "tell me about company X". It does NOT know the user's
-  resume or which jobs they've already applied to.
+  role", "what are my gaps for this JD", or "how should I negotiate salary". It does NOT
+  browse live job listings and does NOT see the application tracker. For a mock
+  interview or a list of likely interview questions, prefer the interview agent.
+- jobs: searches LIVE external job postings, company information, and salary ranges
+  through job-board tools (find openings for a role/location, look up a company, report
+  what a role pays). Use it for "find me backend roles in Bangalore", "tell me about
+  company X", or "what do senior GenAI roles pay / salary range for X". It does NOT know
+  the user's resume or which jobs they've already applied to. (Salary NEGOTIATION advice
+  is knowledge; market salary DATA is jobs.)
 - analytics: answers questions about the user's OWN application tracker via read-only
   SQL — which jobs they applied to, current status, response/interview rates, and which
   applications have gone stale. Anything about "my applications", "how many responses",
@@ -37,6 +39,11 @@ Choose only the agents actually required — a request may need one agent or sev
 - notify: drafts an outreach message for the user (a tailored cover letter or a
   follow-up email to a recruiter) and stages it for confirmation. Nothing is ever sent
   without the user's explicit approval.
+- interview: builds a focused mock-interview plan from the user's resume and target job
+  description — the likely questions (technical, behavioral, system-design,
+  role-specific) with a talking point for each. Use it for "prep me for the interview",
+  "what questions will they ask", "give me practice/mock interview questions". It is
+  about generating questions to rehearse, not general resume/JD fit advice (knowledge).
 """
 
 

@@ -18,6 +18,18 @@ async def test_sqlite_tracker_real_query_over_user_rows():
     assert counts == {"Interviewing": 2, "Rejected": 1}
 
 
+def test_sqlite_add_application_appends_and_dedupes():
+    db = SqliteSQLClient(role="basic", seed=False)
+    db.replace_applications([{"company": "Acme", "role": "GenAI Eng", "status": "Applied"}])
+    assert db.count() == 1
+    # a new company+role appends
+    assert db.add_application({"company": "Bolt", "role": "ML Eng", "status": "Applied"}) == 2
+    # an exact company+role duplicate (case-insensitive) does NOT
+    assert db.add_application({"company": "bolt", "role": "ml eng", "status": "Offer"}) == 2
+    # missing company/role is ignored
+    assert db.add_application({"role": "Only role"}) == 2
+
+
 async def test_sqlite_tracker_rejects_writes():
     db = SqliteSQLClient(role="basic")
     for bad in ("DELETE FROM applications", "UPDATE applications SET status='Offer'", "DROP TABLE applications"):

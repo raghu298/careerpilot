@@ -53,6 +53,30 @@ export async function setApplications(session: string, applications: Application
   return res.json();
 }
 
+export async function addApplication(session: string, application: ApplicationRow) {
+  const res = await fetch(`${API_BASE}/session/applications/add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session, application }),
+  });
+  return res.json() as Promise<{ ok: boolean; count: number }>;
+}
+
+export async function downloadApplicationsCsv(session: string) {
+  const res = await fetch(`${API_BASE}/session/applications.csv`, {
+    headers: { "x-session": session },
+  });
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "careerpilot-applications.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getOutbox(session: string) {
   const res = await fetch(`${API_BASE}/demo/outbox`, { headers: { "x-session": session } });
   const data = await res.json();

@@ -24,13 +24,18 @@ _SKILLS = [
 ]
 
 _ROUTING_KEYWORDS = {
-    "knowledge": ("resume", "cv", "jd", "job description", "fit", "gap", "match", "interview",
-                  "behavioural", "behavioral", "negotiat", "salary", "cover letter tips"),
-    "jobs": ("find", "search", "openings", "roles in", "jobs in", "hiring", "company", "postings", "listing"),
+    "knowledge": ("resume", "cv", "jd", "job description", "fit", "gap", "match",
+                  "negotiat", "salary", "cover letter tips"),
+    "jobs": ("find", "search", "openings", "roles in", "jobs in", "hiring", "company", "postings",
+             "listing", "pay", "pays", "paying", "compensation", "market rate", "going rate",
+             "salary range", "salaries", "how much do", "how much does", "what do", "what does"),
     "analytics": ("my application", "applied", "applications", "response rate", "stale", "ghosted",
                   "pending", "status of", "how many have i", "tracker"),
     "notify": ("draft", "remind", "reminder", "follow up", "follow-up", "cover letter", "email the",
                "reach out", "message the recruiter", "send"),
+    "interview": ("interview", "mock interview", "prep me", "prepare me", "prepare for",
+                  "practice question", "what will they ask", "what questions", "questions will",
+                  "rehearse", "behavioural question", "behavioral question"),
 }
 
 
@@ -68,6 +73,14 @@ def _build_sql(question: str) -> str:
             return f"SELECT company, role, status, last_update FROM applications WHERE status IN ({vals})"
     # Default: the status rollup.
     return "SELECT status, COUNT(*) AS count FROM applications GROUP BY status"
+
+
+_SALARY_WORDS = ("salary", "salaries", "pay", "pays", "paying", "compensation", "comp ",
+                 "market rate", "going rate", "how much", "ctc", "package", "what do", "what does")
+
+
+def _wants_salary(text: str) -> bool:
+    return any(w in text.lower() for w in _SALARY_WORDS)
 
 
 def _called_tools(messages) -> set[str]:
@@ -126,8 +139,13 @@ def _extract_job_query(text: str) -> tuple[str, str]:
         "a role i", "i haven't", "applied to", "for me", "that i", " for ", " me ", " a ", " the ",
         "in bangalore", "in hyderabad", "in india", "in the us", "in europe",
         "bangalore", "hyderabad", "worldwide", "remote",
+        # salary/market phrasing, so a pay question yields a clean role term
+        "what do", "what does", "how much do", "how much does", "how much",
+        "pays", "paying", "pay", "salary range", "salaries", "salary",
+        "compensation", "market rate", "going rate", "do ", "does ",
     ):
         role = role.replace(junk, " ")
+    role = re.sub(r"[?!.,]", " ", role)
     role = " ".join(role.split()).strip(" ,.")
     return (role or "software engineer"), region
 
@@ -150,6 +168,7 @@ class OfflineLLMClient:
                 "jobs": "needs live job listings or company info",
                 "analytics": "needs the user's own application-tracker data",
                 "notify": "needs to draft an outreach message for confirmation",
+                "interview": "needs a mock-interview plan from the resume and JD",
             }
             reason = "Routing to " + ", ".join(agents) + " — " + "; ".join(why[a] for a in agents) + "."
             return schema(agents=agents, reasoning=reason)
@@ -166,7 +185,90 @@ class OfflineLLMClient:
         if name == "Draft":
             subject, body = self._draft_message(user_prompt)
             return schema(channel="email", subject=subject, body=body)
+        if name == "InterviewPlan":
+            ctx = user_prompt.split("Context:", 1)[-1].split("Request:", 1)[0].strip()
+            chunks = {m.group(1): m.group(2).strip()
+                      for m in re.finditer(r"\[([^\]]+)\]\s*(.*?)(?=\n\n\[|\Z)", ctx, re.S)}
+            return self._interview_plan(chunks, schema)
         return schema.model_construct()
+
+    @staticmethod
+    def _interview_plan(chunks: dict, schema):
+        """Deterministic mock-interview plan from the user's resume + JD (offline).
+
+        Builds JD-driven technical questions, a grounded system-design prompt, standard
+        behavioral prompts, and a role-specific question — each with a talking point tied
+        to whether the resume already evidences the skill. A real model (OPENAI_API_KEY)
+        writes richer questions; this still produces a genuinely useful rehearsal set.
+        """
+        resume = next((v for k, v in chunks.items() if "my-resume" in k), "")
+        jd = next((v for k, v in chunks.items() if k.startswith("jd")), "")
+        grounded = bool(resume or jd)
+        r_low, j_low = resume.lower(), jd.lower()
+
+        jd_skills = [s for s in _SKILLS if s in j_low]
+        if not jd_skills:  # no JD skills → fall back to the resume's own skills
+            jd_skills = [s for s in _SKILLS if s in r_low]
+
+        questions: list[dict] = []
+        for skill in jd_skills[:3]:
+            shown = skill.upper() if skill in ("sql", "rag", "aws", "llm") else skill
+            if skill in r_low:
+                tp = f"Your resume shows {shown} — lead with a specific project: the problem, your decision, the measurable result."
+            else:
+                tp = f"The JD asks for {shown} but your resume doesn't show it — be honest, then show the closest adjacent experience and how fast you ramp."
+            questions.append({
+                "category": "technical",
+                "question": f"Walk me through how you've used {shown} in production.",
+                "talking_point": tp,
+            })
+
+        # System-design prompt, grounded in a JD skill when we have one.
+        anchor = (jd_skills[0].upper() if jd_skills and jd_skills[0] in ("sql", "rag", "aws", "llm")
+                  else (jd_skills[0] if jd_skills else "the core service"))
+        questions.append({
+            "category": "system-design",
+            "question": f"Design a system that uses {anchor} at scale — walk through the main components and trade-offs.",
+            "talking_point": "Start from requirements and constraints, name the bottleneck, and justify each trade-off out loud.",
+        })
+
+        # Role-specific: pull a clean role title out of the JD (e.g. "Senior GenAI
+        # Engineer") rather than echoing the whole first line; fall back to generic.
+        tm = re.search(
+            r"\b((?:senior|lead|staff|principal|junior)\s+)?([a-z0-9/+ ]*?\b"
+            r"(?:engineer|developer|scientist|manager|analyst|architect|designer))\b",
+            jd.lower(),
+        )
+        title = re.sub(r"\s+", " ", tm.group(0)).strip().title() if tm else ""
+        title = re.sub(r"\bGenai\b", "GenAI", title)
+        question = f"Why this {title} role, and why now?" if title else "Why do you want this role, and why now?"
+        questions.append({
+            "category": "role-specific",
+            "question": question,
+            "talking_point": "Tie your motivation to two concrete things in the JD, not generic enthusiasm.",
+        })
+
+        questions.append({
+            "category": "behavioral",
+            "question": "Tell me about a time a project went wrong. What did you do?",
+            "talking_point": "Use STAR; own the mistake, then spend most of the answer on the fix and what you changed afterwards.",
+        })
+        questions.append({
+            "category": "behavioral",
+            "question": "Describe a time you disagreed with a teammate on a technical decision.",
+            "talking_point": "Show you argued the data, then committed fully once the team decided.",
+        })
+
+        matched = [s for s in jd_skills[:3] if s in r_low]
+        gaps = [s for s in jd_skills[:3] if s not in r_low]
+        if grounded and (matched or gaps):
+            focus = "Lead with " + (", ".join(matched) if matched else "your strongest projects")
+            if gaps:
+                focus += f"; have an honest ramp-up story ready for {', '.join(gaps)}"
+            focus += "."
+        else:
+            focus = "A general rehearsal set — add your resume and target JD via \"Use my resume\" to tailor it."
+        return schema(focus=focus, questions=questions, grounded=grounded)
 
     @staticmethod
     def _draft_message(prompt: str) -> tuple[str, str]:
@@ -240,8 +342,15 @@ class OfflineLLMClient:
         # --- Jobs tools: a genuine multi-tool sequence ---------------------------
         # search_jobs for openings, then get_company to enrich when the user named a
         # company, so the trace shows multiple tools/calls like a real research loop.
-        if {"search_jobs", "get_company"} & tool_names:
+        if {"search_jobs", "get_company", "salary_insights"} & tool_names:
             role, location, company, wants_search, wants_company = _parse_jobs_request(user_text)
+            # A pay/compensation question → aggregate live salary data first.
+            if ("salary_insights" in tool_names and _wants_salary(user_text)
+                    and "salary_insights" not in called):
+                return ToolResponse(
+                    content=None,
+                    tool_calls=[ToolCall("cs", "salary_insights", {"role": role, "location": location})],
+                )
             if "search_jobs" in tool_names and wants_search and "search_jobs" not in called:
                 return ToolResponse(
                     content=None,
@@ -340,6 +449,16 @@ class OfflineLLMClient:
                         out.append("• " + ", ".join(f"{k}: {v}" for k, v in row.items()))
                     if n > 10:
                         out.append(f"…and {n - 10} more.")
+            elif isinstance(p, dict) and (p.get("typical_range") or (p.get("role") is not None and p.get("sample_size") is not None)):
+                role = p.get("role") or "that role"
+                if not p.get("typical_range"):
+                    out.append(p.get("note") or p.get("error") or
+                               f"I couldn't find salary-disclosed postings for {role} right now.")
+                else:
+                    out.append(
+                        f"Typical pay for {role}: **{p['typical_range']}** "
+                        f"(range {p.get('low')}–{p.get('high')}, from {p['sample_size']} "
+                        f"live salary-disclosed posting(s) · {p.get('basis', '')}).")
             elif isinstance(p, dict) and p.get("name"):
                 name = p.get("name")
                 if p.get("error"):

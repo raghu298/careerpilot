@@ -10,6 +10,8 @@ Endpoints mirror the NexusAI demo shape:
     POST /demo/sessions          → create an anonymous persona session (returns a token)
     POST /chat                   → run a turn, streamed as Server-Sent Events (live trace)
     POST /pending                → resolve a staged action (confirm / cancel / revise)
+    POST /session/applications/add → append one application (e.g. saved from search)
+    GET  /session/applications.csv → export the tracker as CSV
     GET  /demo/outbox            → this session's captured notifications
 
 The chat route turns the orchestrator's live-trace callbacks into an SSE stream that
@@ -25,7 +27,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -114,6 +116,11 @@ class Application(BaseModel):
 class ApplicationsRequest(BaseModel):
     session: str
     applications: list[Application]
+
+
+class AddApplicationRequest(BaseModel):
+    session: str
+    application: Application
 
 
 def _require_session(request_token: str) -> Session:
@@ -317,6 +324,42 @@ async def set_applications(req: ApplicationsRequest):
     count = session.sql_client.replace_applications(apps)
     app.state.sessions.persist_applications(session)  # survive restart
     return {"ok": True, "count": count}
+
+
+@app.post("/session/applications/add")
+async def add_application(req: AddApplicationRequest):
+    """Append ONE application — e.g. a job the user saved straight from search results.
+
+    Writes a real row into the session's SQLite tracker (deduping on company+role) so
+    the Analytics agent immediately counts it. Returns the new total.
+    """
+    session = _require_session(req.session)
+    total = session.sql_client.add_application(req.application.model_dump())
+    app.state.sessions.persist_applications(session)
+    return {"ok": True, "count": total}
+
+
+@app.get("/session/applications.csv")
+async def export_applications_csv(x_session: str = Header(default="")):
+    """Download the tracker as CSV — a real file export of the user's own rows."""
+    import csv
+    import io
+
+    session = _require_session(x_session)
+    rows = await session.sql_client.run_query(
+        "SELECT company, role, status, applied_on, last_update, source, location FROM applications"
+    )
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf, fieldnames=["company", "role", "status", "applied_on", "last_update", "source", "location"]
+    )
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="careerpilot-applications.csv"'},
+    )
 
 
 @app.get("/session/applications")

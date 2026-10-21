@@ -79,6 +79,24 @@ def main() -> int:
         a_reply = next((x for x in r["replies"] if x["agent"] == "analytics"), None)
         check("analytics over MY data", a_reply is not None and "Interviewing" in a_reply["content"])
 
+        # save a job → tracker (append, dedupe) + CSV export
+        add = c.post(f"{BASE}/session/applications/add", json={
+            "session": s, "application": {"company": "Nimbus Labs", "role": "Staff AI Eng", "status": "Applied"}}).json()
+        check("save job → tracker (append)", add.get("count") == 3)
+        csv = c.get(f"{BASE}/session/applications.csv", headers={"x-session": s})
+        check("CSV export", csv.headers.get("content-type", "").startswith("text/csv")
+              and "Nimbus Labs" in csv.text)
+
+        # interview prep (5th agent)
+        r = _result(c, "prep me for the interview — what will they ask?", s)
+        iv = next((x for x in r["replies"] if x["agent"] == "interview"), None)
+        check("interview prep plan", iv is not None and "?" in iv["content"])
+
+        # live salary insights (jobs agent)
+        r = _result(c, "what do senior genai engineer roles pay?", s)
+        sal = next((x for x in r["replies"] if x["agent"] == "jobs"), None)
+        check("salary insights", sal is not None and "pay" in sal["content"].lower())
+
         # HITL stage then cancel (never sends)
         r = _result(c, "draft a follow-up email to the recruiter at Acme AI", s)
         staged = bool(r.get("pending"))
