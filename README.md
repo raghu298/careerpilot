@@ -23,7 +23,7 @@ seeker actually feels.
 
 | Ask it… | Agent | How it works |
 |---|---|---|
-| *"Does my resume fit this JD? What are my gaps?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer). Upload your own résumé/JD (PDF/TXT) via **"Use my resume"**. |
+| *"Does my resume fit this JD?"* · *"Optimise my resume for ATS — what keywords am I missing?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer). Does fit/gap analysis **and ATS keyword optimisation** (missing terms + a concrete rewritten bullet). Upload your own résumé/JD (PDF/TXT) via **"Use my resume"**. |
 | *"Find GenAI roles at Nimbus Labs"* · *"What do senior GenAI roles pay?"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`, `salary_insights`) against **live postings** (RemoteOK + Remotive); salary bands are the **median of live salary-disclosed postings** — real figures, never invented. |
 | *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over a **real SQLite** tracker of *your* applications (add them via **"My applications"**, append one straight from search, or **export to CSV**); 3 stacked guardrails. |
 | *"Draft a follow-up email to the recruiter at Acme"* | **Notify** | Drafts tailored outreach and **stages it** — sends only after you confirm (human-in-the-loop) |
@@ -148,7 +148,9 @@ are visible only to Arjun, enforced in the retrieval query, not by prompt text.
 ## Deploy
 
 - **Frontend → Netlify** (`netlify.toml`): base `web`, build `npm run build`, publish `out`.
-  Set `NEXT_PUBLIC_API_BASE` to your deployed API URL.
+  Set `NEXT_PUBLIC_API_BASE` to your deployed API URL. This site deploys via the Netlify
+  **CLI**, so a `git push` alone does not update it — run **`scripts/deploy_web.sh`**
+  (builds with the right API base, verifies the output, deploys to production).
 - **Backend → a Python host** (Render/Fly/Railway): `uvicorn api.main:app`. Netlify's
   serverless runtime is not suited to long-lived SSE + Postgres, so the API lives off-Netlify.
 

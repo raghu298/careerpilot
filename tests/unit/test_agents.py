@@ -69,6 +69,25 @@ async def test_interview_agent_builds_grounded_plan():
     assert len(result.metadata["questions"]) == 2
 
 
+async def test_offline_ats_optimizer_lists_missing_keywords_and_rewrite():
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    ctx = (
+        "[my-resume] Python and FastAPI engineer. Gaps: kubernetes.\n\n"
+        "[jd-target] Required: Python, kubernetes, LLM, RAG."
+    )
+    ans = await OfflineLLMClient().get_structured_output(
+        system_prompt="",
+        user_prompt=f"Context:\n{ctx}\n\nQuestion: optimize my resume for ATS, what keywords am I missing?",
+        schema=KnowledgeAnswer,
+    )
+    assert "ATS" in ans.answer
+    # kubernetes is in the resume's Gaps clause → must be reported missing, not covered
+    assert "kubernetes" in ans.answer.lower()
+    assert "Rewrite a bullet" in ans.answer
+    assert ans.answer_found is True
+
+
 async def test_offline_interview_plan_is_grounded_in_resume_and_jd():
     from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
 

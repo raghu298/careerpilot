@@ -25,7 +25,8 @@ _SKILLS = [
 
 _ROUTING_KEYWORDS = {
     "knowledge": ("resume", "cv", "jd", "job description", "fit", "gap", "match",
-                  "negotiat", "salary", "cover letter tips"),
+                  "negotiat", "salary", "cover letter tips", "ats", "keyword",
+                  "tailor my resume", "optimize my resume", "optimise my resume"),
     "jobs": ("find", "search", "openings", "roles in", "jobs in", "hiring", "company", "postings",
              "listing", "pay", "pays", "paying", "compensation", "market rate", "going rate",
              "salary range", "salaries", "how much do", "how much does", "what do", "what does"),
@@ -370,11 +371,50 @@ class OfflineLLMClient:
         return ToolResponse(content="I don't have a tool for that.")
 
     @staticmethod
+    def _ats_optimize(resume: str, jd: str) -> str:
+        """ATS keyword optimisation: the exact JD terms missing from the resume, plus a
+        concrete rewritten bullet that works them in — honestly. A real model writes a
+        sharper bullet; offline this is still directly actionable."""
+        r_have, _, r_gap = resume.lower().partition("gaps:")
+        jd_skills = [s for s in _SKILLS if s in jd.lower()]
+        present = [s for s in jd_skills if s in r_have and s not in r_gap]
+        missing = [s for s in jd_skills if s not in present]
+
+        def _fmt(skills):
+            return ", ".join(s.upper() if s in ("sql", "rag", "aws", "llm", "ds", "ml") else s
+                             for s in dict.fromkeys(skills))
+
+        lines = ["**ATS keyword optimisation** — matching your resume to the JD's terms:\n"]
+        if missing:
+            lines.append(f"**Missing keywords the ATS scans for** — {_fmt(missing)}.")
+        else:
+            lines.append("Your resume already covers the JD's scannable keywords — nice.")
+        if present:
+            lines.append(f"**Already covered** — {_fmt(present)}.")
+
+        anchor = _fmt(present[:2]) or "your core stack"
+        add = missing[0] if missing else (jd_skills[0] if jd_skills else "the key tool")
+        lines.append(
+            "\n**Rewrite a bullet like this** (only claim what's true):\n"
+            f"• \"Built and shipped a production feature with {anchor}, cutting <latency/cost> by <N>% — "
+            f"and, if you've touched it, name {_fmt([add])} explicitly so the ATS and the reviewer both see it.\"\n"
+        )
+        lines.append(
+            "Tips: use the JD's exact spelling (e.g. \"LLM\", not \"large language model\"), put the top "
+            "keywords in your summary and most recent role, and skip tables/graphics the parser can't read."
+        )
+        return "\n".join(lines)
+
+    @staticmethod
     def _knowledge_answer(question: str, chunks: dict) -> str:
         """Deterministic resume-vs-JD match/gap analysis, or a clean direct answer."""
         resume = next((v for k, v in chunks.items() if "my-resume" in k), "")
         jd = next((v for k, v in chunks.items() if k.startswith("jd")), "")
+        wants_ats = any(w in question for w in ("ats", "keyword", "optimi", "tailor"))
         wants_fit = any(w in question for w in ("fit", "gap", "match", "suit", "qualify"))
+
+        if wants_ats and resume and jd:
+            return OfflineLLMClient._ats_optimize(resume, jd)
 
         if wants_fit and resume and jd:
             r_full, j = resume.lower(), jd.lower()
