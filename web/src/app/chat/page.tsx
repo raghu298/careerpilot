@@ -209,6 +209,20 @@ export default function ChatPage() {
             </div>
           ))}
         </div>
+        <div className="sidebar-actions">
+          <button className="text-button" onClick={() => { setShowDocs(true); setNavOpen(false); }}>Use my resume</button>
+          <button className="text-button" onClick={() => { setShowApps(true); setNavOpen(false); }}>My applications</button>
+          <a href="/outbox">Demo Outbox</a>
+          <label className="toggle-label">
+            <input type="checkbox" checked={working} onChange={(e) => setWorking(e.target.checked)} />
+            Working
+          </label>
+          <label className="toggle-label">
+            <input type="checkbox" checked={showCitations} onChange={(e) => setShowCitations(e.target.checked)} />
+            Show citations
+          </label>
+          <button className="text-button" onClick={switchProfile}>Switch profile</button>
+        </div>
         <div className="sidebar-foot">Multi-agent · LangGraph · MCP · RAG · SQL · HITL</div>
       </aside>
 
