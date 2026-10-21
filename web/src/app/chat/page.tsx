@@ -127,15 +127,39 @@ export default function ChatPage() {
     }));
     setEvents([]);
     setBusy(true);
-    try {
-      const result = await streamPost("/chat", { session: active.token, message: text }, (e) => setEvents((p) => [...p, e]));
-      applyResult(result);
-    } catch {
-      setEvents((p) => [...p, { type: "error", message: "Backend may be waking up — try again in ~30s." }]);
+    const token = active.token;
+    const systemReply = (content: string) =>
       updateActive((c) => ({
         ...c,
-        messages: [...c.messages, { role: "assistant", replies: [{ agent: "system", content: "Couldn't reach the backend. Render's free tier sleeps when idle — wait ~30s and resend.", metadata: {} }], routing_reasoning: "" }],
+        messages: [...c.messages, { role: "assistant", replies: [{ agent: "system", content, metadata: {} }], routing_reasoning: "" }],
       }));
+    try {
+      // Retry once on failure: the first message after idle can hit a cold backend whose
+      // connection resets while waking. A silent null/empty result also gets surfaced,
+      // so the user is never left staring at a sent message with no response.
+      let result: ChatResult | null = null;
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 2 && !result; attempt++) {
+        if (attempt > 0) {
+          setEvents((p) => [...p, { type: "info", message: "Backend waking up — retrying…" }]);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+        try {
+          result = await streamPost("/chat", { session: token, message: text }, (e) => setEvents((p) => [...p, e]));
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (result && (result.replies.length || result.pending)) {
+        applyResult(result);
+      } else if (lastErr) {
+        throw lastErr;
+      } else {
+        systemReply("No response came back. The backend may have been waking up — please resend.");
+      }
+    } catch {
+      setEvents((p) => [...p, { type: "error", message: "Couldn't reach the backend — try again in ~30s." }]);
+      systemReply("Couldn't reach the backend. Render's free tier sleeps when idle — wait ~30s and resend.");
     } finally {
       setBusy(false);
     }

@@ -139,11 +139,9 @@ export async function streamPost(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.body) return null;
+  // Surface HTTP errors instead of silently returning no reply.
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let result: ChatResult | null = null;
 
   const handleFrame = (frame: string) => {
@@ -156,9 +154,22 @@ export async function streamPost(
     if (!data) return;
     const payload = JSON.parse(data);
     if (payload.type === "result") result = payload as ChatResult;
+    else if (payload.type === "error") throw new Error(payload.message || "server error");
     else onEvent(payload as TraceEvent);
   };
 
+  // Streaming path. Some browsers/proxies don't expose a readable body (res.body is
+  // null) or buffer the whole SSE response — fall back to reading it all at once so a
+  // reply is still rendered instead of silently vanishing.
+  if (!res.body || typeof res.body.getReader !== "function") {
+    const text = await res.text();
+    for (const frame of text.replace(/\r/g, "").split("\n\n")) handleFrame(frame);
+    return result;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
