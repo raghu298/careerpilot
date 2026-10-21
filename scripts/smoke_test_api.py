@@ -97,6 +97,16 @@ def main() -> int:
         sal = next((x for x in r["replies"] if x["agent"] == "jobs"), None)
         check("salary insights", sal is not None and "pay" in sal["content"].lower())
 
+        # live trending skills (jobs agent)
+        r = _result(c, "what skills are in demand for genai engineer roles?", s)
+        sk = next((x for x in r["replies"] if x["agent"] == "jobs"), None)
+        check("trending skills", sk is not None and "skill" in sk["content"].lower())
+
+        # ATS keyword optimiser (knowledge agent)
+        r = _result(c, "optimise my resume for ATS, what keywords am I missing?", s)
+        ats = next((x for x in r["replies"] if x["agent"] == "knowledge"), None)
+        check("ATS optimiser", ats is not None and "ats" in ats["content"].lower())
+
         # HITL stage then cancel (never sends)
         r = _result(c, "draft a follow-up email to the recruiter at Acme AI", s)
         staged = bool(r.get("pending"))

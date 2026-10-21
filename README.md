@@ -24,7 +24,7 @@ seeker actually feels.
 | Ask it… | Agent | How it works |
 |---|---|---|
 | *"Does my resume fit this JD?"* · *"Optimise my resume for ATS — what keywords am I missing?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer). Does fit/gap analysis **and ATS keyword optimisation** (missing terms + a concrete rewritten bullet). Upload your own résumé/JD (PDF/TXT) via **"Use my resume"**. |
-| *"Find GenAI roles at Nimbus Labs"* · *"What do senior GenAI roles pay?"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`, `salary_insights`) against **live postings** (RemoteOK + Remotive); salary bands are the **median of live salary-disclosed postings** — real figures, never invented. |
+| *"Find GenAI roles at Nimbus Labs"* · *"What do senior GenAI roles pay?"* · *"What skills are in demand?"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`, `salary_insights`, `trending_skills`) against **live postings** (RemoteOK + Remotive); salary bands are the **median of live salary-disclosed postings** and trending skills are **aggregated from live posting tags** — real figures, never invented. |
 | *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over a **real SQLite** tracker of *your* applications (add them via **"My applications"**, append one straight from search, or **export to CSV**); 3 stacked guardrails. |
 | *"Draft a follow-up email to the recruiter at Acme"* | **Notify** | Drafts tailored outreach and **stages it** — sends only after you confirm (human-in-the-loop) |
 | *"Prep me for the interview — what will they ask?"* | **Interview** | Builds a grounded mock-interview plan from your resume + target JD: likely questions grouped by type (technical / behavioral / system-design / role-specific) with a talking point for each. |
@@ -103,7 +103,7 @@ src/careerpilot/
   access_policy.py  # persona → typed capability set (enforced before agents are built)
   bootstrap.py      # shared + per-session wiring reused by every entry point
 api/                # FastAPI backend: sessions, chat (SSE), pending (HITL), docs, applications, outbox
-mcp_server/         # real MCP server: live job search + salary insights over RemoteOK + Remotive
+mcp_server/         # real MCP server: live job search + salary + trending-skills over RemoteOK + Remotive
 web/                # Next.js frontend (chat, live trace, persona chooser, résumé + applications editors)
 evaluation/         # golden-dataset eval harness: RAG regression + Recall@k/MRR, agent correctness, optional DeepEval
 tests/unit/         # fake-backed tests — no network, no API key
@@ -115,7 +115,7 @@ tests/unit/         # fake-backed tests — no network, no API key
 # backend (offline — no key needed)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                            # 60 offline tests (no network, no key)
+pytest -q                            # 67 offline tests (no network, no key)
 python -m evaluation.run_knowledge_eval   # RAG regression + Recall@k/MRR (offline)
 python -m evaluation.run_agent_eval       # jobs relevance + NL→SQL + read-only guardrail
 python scripts/chat.py               # CLI: try every agent from the terminal

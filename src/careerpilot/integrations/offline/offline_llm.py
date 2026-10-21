@@ -29,7 +29,9 @@ _ROUTING_KEYWORDS = {
                   "tailor my resume", "optimize my resume", "optimise my resume"),
     "jobs": ("find", "search", "openings", "roles in", "jobs in", "hiring", "company", "postings",
              "listing", "pay", "pays", "paying", "compensation", "market rate", "going rate",
-             "salary range", "salaries", "how much do", "how much does", "what do", "what does"),
+             "salary range", "salaries", "how much do", "how much does", "what do", "what does",
+             "in demand", "trending", "what skills", "which skills", "skills for", "skills are",
+             "should i learn", "top skills", "skills needed", "skills required"),
     "analytics": ("my application", "applied", "applications", "response rate", "stale", "ghosted",
                   "pending", "status of", "how many have i", "tracker"),
     "notify": ("draft", "remind", "reminder", "follow up", "follow-up", "cover letter", "email the",
@@ -82,6 +84,15 @@ _SALARY_WORDS = ("salary", "salaries", "pay", "pays", "paying", "compensation", 
 
 def _wants_salary(text: str) -> bool:
     return any(w in text.lower() for w in _SALARY_WORDS)
+
+
+_SKILL_DEMAND_WORDS = ("in demand", "trending", "what skills", "which skills", "skills for",
+                       "skills are", "should i learn", "most common skill", "top skills",
+                       "skills needed", "skills required", "hot skills")
+
+
+def _wants_skills(text: str) -> bool:
+    return any(w in text.lower() for w in _SKILL_DEMAND_WORDS)
 
 
 def _called_tools(messages) -> set[str]:
@@ -144,6 +155,12 @@ def _extract_job_query(text: str) -> tuple[str, str]:
         "what do", "what does", "how much do", "how much does", "how much",
         "pays", "paying", "pay", "salary range", "salaries", "salary",
         "compensation", "market rate", "going rate", "do ", "does ",
+        # skills-demand phrasing, so "what skills for X" yields a clean role term
+        # (order matters: multi-word phrases removed before bare words; never strip
+        # "learn" as a bare substring — it corrupts "learning")
+        "what skills", "which skills", "skills for", "skills are", "skills needed",
+        "skills required", "in demand", "trending", "should i learn", "most common",
+        "top skills", "hot skills", "skills", "demand", "are ", "needed",
     ):
         role = role.replace(junk, " ")
     role = re.sub(r"[?!.,]", " ", role)
@@ -343,8 +360,15 @@ class OfflineLLMClient:
         # --- Jobs tools: a genuine multi-tool sequence ---------------------------
         # search_jobs for openings, then get_company to enrich when the user named a
         # company, so the trace shows multiple tools/calls like a real research loop.
-        if {"search_jobs", "get_company", "salary_insights"} & tool_names:
+        if {"search_jobs", "get_company", "salary_insights", "trending_skills"} & tool_names:
             role, location, company, wants_search, wants_company = _parse_jobs_request(user_text)
+            # A "what skills are in demand" question → aggregate live posting tags first.
+            if ("trending_skills" in tool_names and _wants_skills(user_text)
+                    and "trending_skills" not in called):
+                return ToolResponse(
+                    content=None,
+                    tool_calls=[ToolCall("ck", "trending_skills", {"role": role, "location": location})],
+                )
             # A pay/compensation question → aggregate live salary data first.
             if ("salary_insights" in tool_names and _wants_salary(user_text)
                     and "salary_insights" not in called):
@@ -489,6 +513,16 @@ class OfflineLLMClient:
                         out.append("• " + ", ".join(f"{k}: {v}" for k, v in row.items()))
                     if n > 10:
                         out.append(f"…and {n - 10} more.")
+            elif isinstance(p, dict) and isinstance(p.get("skills"), list):
+                role = p.get("role") or "that role"
+                if not p["skills"]:
+                    out.append(p.get("note") or p.get("error") or
+                               f"I couldn't find skill data for {role} right now.")
+                else:
+                    top = ", ".join(f"{s['skill']} ({s['count']})" for s in p["skills"])
+                    out.append(
+                        f"Most in-demand skills for {role} "
+                        f"(across {p.get('postings_analysed', 0)} live postings): {top}.")
             elif isinstance(p, dict) and (p.get("typical_range") or (p.get("role") is not None and p.get("sample_size") is not None)):
                 role = p.get("role") or "that role"
                 if not p.get("typical_range"):

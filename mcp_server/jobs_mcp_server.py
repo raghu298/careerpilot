@@ -168,6 +168,20 @@ _OFFKIND = ("trainer", "manager", "sales", "support", "recruiter", "assistant", 
 _GIG = ("coding task", "ai coding", "data annotation", "annotation", "data labeling",
         "labeling", "labelling", "micro task", "microtask", "per task")
 
+# RemoteOK tags every posting with broad category/meta labels (seniority, department,
+# perks, industry) that aren't *skills to learn*. Excluding them keeps trending_skills
+# focused on real, learnable skills rather than "exec" or "digital nomad".
+_NON_SKILL_TAGS = {
+    "exec", "senior", "junior", "lead", "non tech", "digital nomad", "remote", "full time",
+    "part time", "contract", "internship", "ops", "operations", "hr", "legal", "finance",
+    "sales", "marketing", "customer support", "support", "medical", "healthcare", "education",
+    "teacher", "teaching", "travel", "adult", "crypto", "web3", "saas", "growth", "seo",
+    "content", "content writing", "copywriting", "video", "english", "stats", "admin",
+    "quality assurance", "recruiter", "recruiting", "management", "manager", "design",
+    "designer", "product", "strategy", "consulting", "nonprofit", "ecommerce", "fintech",
+    "excel", "microsoft", "word", "powerpoint", "technical", "dev", "software",
+}
+
 
 def _rank(terms: list[str], pool: list[dict], location: str, role_kinds: list[str]) -> list[dict]:
     # Whole-word matchers — critical so "ai" doesn't match "Rails" or "go" "Django".
@@ -295,6 +309,53 @@ def salary_insights(role: str, location: str = "") -> dict:
         "high": k(max(highs)),
         "basis": "median of live salary-disclosed postings",
         "source": "remoteok (live)",
+    }
+
+
+@mcp.tool()
+def trending_skills(role: str, location: str = "") -> dict:
+    """The skills most in demand for a role right now, by frequency across live postings.
+
+    Counts the tags/keywords on the postings that actually match the role, so the answer
+    reflects what employers are asking for today — real aggregation, not a canned list.
+    """
+    terms = _topic_terms(role)
+    role_kinds = [k for k in _ROLE_KINDS if re.search(r"\b" + k + r"\b", role.lower())]
+    pool: list[dict] = []
+    try:
+        pool += _fetch_remoteok()
+    except Exception as exc:
+        errors = str(exc)
+    else:
+        errors = ""
+    try:
+        pool += _fetch_remotive(terms[0] if terms else role.strip())
+    except Exception:
+        pass
+    if not pool:
+        return {"role": role, "count": 0, "error": errors or "no live job source reachable"}
+
+    ranked = _rank(terms, pool, location, role_kinds)[:60]
+    if not ranked:
+        return {"role": role, "count": 0, "note": "No matching live postings to analyse right now."}
+
+    counts: dict[str, int] = {}
+    # Query terms themselves aren't "skills to learn" — drop them so results are additive;
+    # also drop RemoteOK's category/meta tags that aren't learnable skills.
+    noise = set(terms) | _NON_SKILL_TAGS | {"engineer", "developer"}
+    for job in ranked:
+        for tag in {t.strip().lower() for t in job["tags"] if t.strip()}:
+            if len(tag) < 2 or tag in noise:
+                continue
+            counts[tag] = counts.get(tag, 0) + 1
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[:10]
+    if not top:
+        return {"role": role, "count": len(ranked), "note": "Matching postings had no skill tags to rank."}
+    return {
+        "role": role,
+        "postings_analysed": len(ranked),
+        "skills": [{"skill": s, "count": n} for s, n in top],
+        "source": "remoteok + remotive (live)",
     }
 
 

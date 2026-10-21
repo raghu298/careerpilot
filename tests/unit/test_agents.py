@@ -137,6 +137,21 @@ async def test_fake_mcp_salary_insights_aggregates():
     assert out["low"] and out["high"]
 
 
+async def test_fake_mcp_trending_skills_counts_tags():
+    out = await FakeJobsMCP().call_tool("trending_skills", {"role": "genai engineer"})
+    assert out["postings_analysed"] >= 1
+    assert out["skills"] and all({"skill", "count"} <= set(s) for s in out["skills"])
+
+
+async def test_jobs_agent_reports_trending_skills_via_offline_brain():
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    agent = JobsAgent(OfflineLLMClient(), FakeJobsMCP(), _caps())
+    result = await agent.handle("what skills are in demand for genai engineer roles?")
+    assert "in-demand skills" in result.content.lower()
+    assert any("trending_skills" in c for c in result.metadata["citations"])
+
+
 async def test_jobs_agent_reports_salary_via_offline_brain():
     """A pay question drives the salary_insights tool through the real offline brain."""
     from careerpilot.integrations.offline.offline_llm import OfflineLLMClient

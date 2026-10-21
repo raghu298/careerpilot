@@ -60,6 +60,21 @@ _TOOL_SPECS = [
     {
         "type": "function",
         "function": {
+            "name": "trending_skills",
+            "description": "Most in-demand skills for a role, by frequency across live postings. Use for 'what skills are in demand / should I learn for X roles'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "description": "e.g. 'genai engineer'"},
+                    "location": {"type": "string"},
+                },
+                "required": ["role"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company",
             "description": "Short profile for a company (industry, size, what they build).",
             "parameters": {
@@ -120,6 +135,25 @@ class FakeJobsMCP:
                 "low": f"₹{min(lpas)} LPA",
                 "high": f"₹{max(lpas)} LPA",
                 "basis": "median of sample postings",
+                "source": "fake (offline)",
+            }
+        if name == "trending_skills":
+            role = str(arguments.get("role", "")).lower()
+            loc = str(arguments.get("location", "")).lower()
+            matches = [
+                j for j in _JOBS
+                if (not role or any(w in j["title"].lower() or w in j["stack"].lower() for w in role.split()))
+                and (not loc or loc in j["location"].lower())
+            ] or _JOBS
+            counts: dict[str, int] = {}
+            for j in matches:
+                for skill in {s.strip().lower() for s in j["stack"].split(",") if s.strip()}:
+                    counts[skill] = counts.get(skill, 0) + 1
+            top = sorted(counts.items(), key=lambda kv: -kv[1])[:10]
+            return {
+                "role": arguments.get("role", ""),
+                "postings_analysed": len(matches),
+                "skills": [{"skill": s, "count": n} for s, n in top],
                 "source": "fake (offline)",
             }
         if name == "get_company":
