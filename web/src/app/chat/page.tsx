@@ -28,6 +28,7 @@ export default function ChatPage() {
   const [showCitations, setShowCitations] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showApps, setShowApps] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) || null;
@@ -78,6 +79,7 @@ export default function ChatPage() {
       setActiveId(convo.id);
       setEvents([]);
       setPending(null);
+      setNavOpen(false);
     } catch {
       /* ignore */
     }
@@ -87,6 +89,7 @@ export default function ChatPage() {
     setActiveId(id);
     setEvents([]);
     setPending(null);
+    setNavOpen(false);
   }
 
   function deleteConversation(id: string) {
@@ -188,7 +191,8 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      <aside className="conversation-sidebar">
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+      <aside className={`conversation-sidebar ${navOpen ? "open" : ""}`}>
         <div className="conversation-sidebar-header">
           <span>Conversations</span>
           <button onClick={newConversation} aria-label="New conversation">+</button>
@@ -211,6 +215,7 @@ export default function ChatPage() {
       <main className="chat-main">
         <header className="chat-header">
           <div className="brand">
+            <button className="nav-toggle" onClick={() => setNavOpen(true)} aria-label="Open conversations">☰</button>
             <span className="brand-logo">C</span>
             <div>
               <div className="brand-name">CareerPilot</div>
