@@ -20,6 +20,7 @@ from careerpilot.core.agent import (
     emit,
 )
 from careerpilot.core.llm_client import LLMClient
+from careerpilot.core.safety import scan_pii
 from careerpilot.core.tool_cache import ToolCache
 from careerpilot.integrations.notifications.notifiers import DemoOutbox
 
@@ -69,6 +70,9 @@ class NotifyAgent:
         )
         channel = draft.channel if draft.channel in ("slack", "email") else "email"
         preview = f"[{channel}] to {self._destination}\nSubject: {draft.subject}\n\n{draft.body}"
+        pii = scan_pii(draft.body)
+        if pii:
+            preview += f"\n\n⚠ This draft contains personal info ({', '.join(pii)}) — review before sending."
         self._pending = PendingAction(
             kind="message",
             destination=self._destination,

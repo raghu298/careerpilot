@@ -60,6 +60,22 @@ real adapter each — which is why every agent is unit-tested with fakes (no net
 read-only filter (and a read-only DB role in production); the Notify Agent never lets the
 LLM choose a destination and never sends without explicit confirmation.
 
+**Shared Foundation (used by every agent).** The cross-cutting layer under the agents —
+each piece real, in-process, and swappable for a production backend without touching call sites:
+
+- **LLM Gateway** (`core/llm_gateway.py`) — every model call goes through one seam that does
+  per-call-type **model routing** and records latency/counters.
+- **Caching** — session cache (`SessionStore`), tool-result cache (`ToolCache`), and an
+  **embedding cache** (`CachingEmbeddingClient`, LRU, hit/miss metrics).
+- **Guardrails & Safety** (`core/safety.py`) — **PII redaction** keeps emails/phones/cards out
+  of logs; staged drafts are flagged when they contain PII; a narrow **content filter** gives a
+  safe redirect for out-of-bounds requests.
+- **Rate limiting** (`core/rate_limit.py`) — token-bucket limiter on `/chat` (per session) and
+  `/demo/sessions` (per IP); returns `429` with a retry hint.
+- **Observability** (`core/observability.py`) — structured logging + a metrics registry exposed
+  at **`GET /metrics`** (request/agent/LLM/cache/rate-limit/safety counters and p50/p95 latency),
+  live tracing over SSE, and the `evaluation/` harness.
+
 ## Tech stack
 
 **Backend** — Python 3.11+, `asyncio`, **LangGraph**, FastAPI + SSE, OpenAI
@@ -79,7 +95,7 @@ src/careerpilot/
     jobs/           # tool-calling agent over the jobs MCP server
     analytics/      # NL → read-only SQL over the application tracker
     notify/         # HITL outreach drafter (ConfirmableAgent)
-  core/             # Agent/LLM/Embedding protocols, tool-loop, tool cache, chunking
+  core/             # protocols + shared foundation: tool-loop, caches, LLM gateway, rate limit, safety, observability
   integrations/     # adapters: pgvector, SQL (Postgres + real SQLite), jobs MCP (+fake), notifiers, offline brain
   access_policy.py  # persona → typed capability set (enforced before agents are built)
   bootstrap.py      # shared + per-session wiring reused by every entry point

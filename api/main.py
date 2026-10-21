@@ -3,6 +3,7 @@
 Endpoints mirror the NexusAI demo shape:
 
     GET  /health                 → liveness
+    GET  /metrics                → observability snapshot (counters + latency)
     GET  /demo/personas          → the selectable personas
     POST /demo/sessions          → create an anonymous persona session (returns a token)
     POST /chat                   → run a turn, streamed as Server-Sent Events (live trace)
@@ -20,7 +21,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -28,8 +29,23 @@ from sse_starlette.sse import EventSourceResponse
 
 from careerpilot.access_policy import list_personas
 from careerpilot.bootstrap import build_session_orchestrator, build_shared_resources, seed_knowledge_store
+from careerpilot.core.observability import get_logger, metrics
+from careerpilot.core.rate_limit import RateLimiter
+from careerpilot.core.safety import redact_pii
 from careerpilot.fixtures import KNOWLEDGE_DOCS
 from api.sessions import Session, SessionStore
+
+logger = get_logger("api")
+
+# Rate limiters (token buckets). Chat: ~1 req/s sustained, burst 10, per session.
+# Session creation: slower, per client IP, to blunt token farming.
+_chat_limiter = RateLimiter(rate_per_sec=1.0, capacity=10)
+_session_limiter = RateLimiter(rate_per_sec=0.2, capacity=8)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
 
 
 @asynccontextmanager
@@ -112,6 +128,13 @@ async def health():
     }
 
 
+@app.get("/metrics")
+async def get_metrics():
+    """Observability snapshot — counters + latency percentiles for routing, agents,
+    LLM/embedding calls, rate-limiting and safety. In-process; resets on restart."""
+    return metrics.snapshot()
+
+
 @app.get("/demo/personas")
 async def personas():
     return {
@@ -123,11 +146,16 @@ async def personas():
 
 
 @app.post("/demo/sessions")
-async def create_session(req: SessionRequest):
+async def create_session(req: SessionRequest, request: Request):
+    ip = _client_ip(request)
+    if not _session_limiter.allow(ip):
+        metrics.incr("ratelimit.sessions.blocked")
+        raise HTTPException(status_code=429, detail="Too many sessions — slow down a moment.")
     try:
         session = app.state.sessions.create(req.persona_id)
     except KeyError:
         raise HTTPException(status_code=400, detail="Unknown persona")
+    metrics.incr("sessions.created")
     return {"session": session.token, "persona_id": session.persona_id}
 
 
@@ -183,6 +211,12 @@ async def _stream(coro_factory):
 @app.post("/chat")
 async def chat(req: ChatRequest):
     session = _require_session(req.session)
+    if not _chat_limiter.allow(req.session):
+        metrics.incr("ratelimit.chat.blocked")
+        retry = _chat_limiter.retry_after(req.session)
+        raise HTTPException(status_code=429, detail=f"Too many messages — retry in ~{retry}s.")
+    # Log with PII stripped so personal data never lands in logs/metrics.
+    logger.info("chat persona=%s msg=%r", session.persona_id, redact_pii(req.message)[:160])
 
     async def factory(on_event):
         return await session.orchestrator.handle(req.message, on_event=on_event)

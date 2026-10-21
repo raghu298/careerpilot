@@ -37,6 +37,8 @@ from careerpilot.core.agent import (
     PendingAction,
     emit,
 )
+from careerpilot.core.observability import metrics
+from careerpilot.core.safety import content_check
 from careerpilot.core.tool_cache import ToolCache
 from careerpilot.orchestrator.memory import ConversationMemory
 from careerpilot.orchestrator.router import Router
@@ -157,6 +159,7 @@ class Orchestrator:
         on_event = self._on_event(config)
         tool_cache = self._tool_cache(config)
         emit(on_event, {"type": "agent_started", "agent": name})
+        metrics.incr(f"agent.{name}.calls")
         result = await self._agents[name].handle(
             state["user_request"],
             history=state.get("history"),
@@ -192,10 +195,24 @@ class Orchestrator:
     # ---- public API ---------------------------------------------------------
 
     async def handle(self, user_request: str, on_event: OnEvent | None = None) -> OrchestratorResult:
+        metrics.incr("orchestrator.requests")
+
+        # Guardrail: block clearly out-of-scope / unsafe requests with a safe redirect.
+        safe = content_check(user_request)
+        if safe is not None:
+            metrics.incr("safety.blocked")
+            emit(on_event, {"type": "routing_decided", "agents": [], "reasoning": "Blocked by safety guardrail."})
+            emit(on_event, {"type": "done"})
+            return OrchestratorResult(
+                results={"system": AgentResult("system", safe)},
+                routing_reasoning="Blocked by safety guardrail.",
+            )
+
         # Meta / greeting / off-topic messages ("what can you do", "hi") shouldn't be
         # routed into RAG and answered with a random document — answer them directly.
         help_text = _help_reply(user_request)
         if help_text is not None:
+            metrics.incr("orchestrator.help_reply")
             emit(on_event, {"type": "routing_decided", "agents": [], "reasoning": "Capabilities / greeting — answered directly."})
             self._memory.add_user(user_request)
             self._memory.add_assistant(help_text)
@@ -206,10 +223,15 @@ class Orchestrator:
             )
 
         config = self._config(on_event)
-        state = await self._graph.ainvoke(
-            {"user_request": user_request, "history": self._memory.as_messages(), "results": {}},
-            config=config,
-        )
+        try:
+            with metrics.timer("orchestrator.latency_ms"):
+                state = await self._graph.ainvoke(
+                    {"user_request": user_request, "history": self._memory.as_messages(), "results": {}},
+                    config=config,
+                )
+        except Exception:
+            metrics.incr("orchestrator.errors")
+            raise
         return self._finalize(user_request, state, on_event)
 
     async def resume_pending(self, decision: dict, on_event: OnEvent | None = None) -> OrchestratorResult:

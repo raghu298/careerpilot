@@ -19,8 +19,9 @@ from careerpilot.agents.knowledge.agent import KnowledgeAgent
 from careerpilot.agents.jobs.agent import JobsAgent
 from careerpilot.agents.notify.agent import NotifyAgent
 from careerpilot.core.chunking import chunk_document
-from careerpilot.core.embedding_client import EmbeddingClient, OpenAIEmbeddingClient
+from careerpilot.core.embedding_client import CachingEmbeddingClient, EmbeddingClient, OpenAIEmbeddingClient
 from careerpilot.core.llm_client import LLMClient, OpenAILLMClient
+from careerpilot.core.llm_gateway import LLMGateway
 from careerpilot.fixtures import KNOWLEDGE_DOCS
 import asyncio
 from pathlib import Path
@@ -67,8 +68,12 @@ async def seed_knowledge_store(embeddings: EmbeddingClient, docs: list[dict]) ->
 
 async def build_shared_resources() -> SharedResources:
     real = _real_mode()
-    llm: LLMClient = OpenAILLMClient() if real else OfflineLLMClient()
-    embeddings: EmbeddingClient = OpenAIEmbeddingClient() if real else HashingEmbeddingClient()
+    base_llm: LLMClient = OpenAILLMClient() if real else OfflineLLMClient()
+    base_embeddings: EmbeddingClient = OpenAIEmbeddingClient() if real else HashingEmbeddingClient()
+    # Shared Foundation: every model call goes through the gateway (model routing +
+    # metrics); every embedding goes through the cache (hit/miss metrics, cost savings).
+    llm: LLMClient = LLMGateway(base_llm)
+    embeddings: EmbeddingClient = CachingEmbeddingClient(base_embeddings)
 
     vector_store = await seed_knowledge_store(embeddings, KNOWLEDGE_DOCS)
 
