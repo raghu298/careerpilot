@@ -48,6 +48,13 @@ class FakeSQLClient:
         safe = validate_readonly(query).lower()
         if "group by" in safe and "status" in safe:
             return list(_STATUS_COUNTS)
+        # A status filter: WHERE status IN ('Applied', 'Screening', ...) or = 'X'.
+        if "where" in safe and "status" in safe:
+            import re as _re
+
+            wanted = {m.lower() for m in _re.findall(r"'([^']+)'", safe)}
+            if wanted:
+                return [a for a in _APPS if a["status"].lower() in wanted]
         if "ghost" in safe or "stale" in safe or ("last_update" in safe and "where" in safe):
             return [a for a in _APPS if a["status"] in ("Ghosted", "Applied")]
         if "count(" in safe and "status" not in safe:

@@ -34,6 +34,42 @@ _ROUTING_KEYWORDS = {
 }
 
 
+# Generic words that carry no topic — excluded when checking whether a retrieved chunk
+# is actually on-topic for the question (lexical-grounding gate below).
+_QUESTION_STOP = {
+    "how", "the", "and", "for", "with", "what", "are", "can", "should", "would", "could",
+    "does", "did", "will", "about", "into", "this", "that", "these", "those", "your", "you",
+    "our", "their", "them", "they", "any", "all", "some", "when", "where", "which", "who",
+    "whom", "why", "best", "good", "get", "got", "give", "want", "need", "like", "have",
+    "has", "had", "been", "being", "from", "out", "off", "day", "days", "now", "one", "two",
+}
+
+
+def _build_sql(question: str) -> str:
+    """Generate a read-only SQL query for the application tracker from the question.
+
+    The deterministic brain can't reason freely, so it maps the question to one of a few
+    safe, parameterised shapes. A real model (OPENAI_API_KEY) writes the SQL directly.
+    """
+    q = question.lower()
+    # Specific or colloquial statuses → a status filter.
+    status_map = {
+        "ghost": ["Ghosted"], "stale": ["Ghosted", "Applied"],
+        "reject": ["Rejected"], "offer": ["Offer"],
+        "interview": ["Interviewing"], "screen": ["Screening"],
+        "pending": ["Applied", "Screening", "Interviewing"],
+        "progress": ["Applied", "Screening", "Interviewing"],
+        "waiting": ["Applied", "Screening", "Interviewing"],
+        "respon": ["Screening", "Interviewing", "Offer"],  # "got a response"
+    }
+    for key, statuses in status_map.items():
+        if key in q:
+            vals = ", ".join(f"'{s}'" for s in statuses)
+            return f"SELECT company, role, status, last_update FROM applications WHERE status IN ({vals})"
+    # Default: the status rollup.
+    return "SELECT status, COUNT(*) AS count FROM applications GROUP BY status"
+
+
 def _extract_job_query(text: str) -> tuple[str, str]:
     """Pull a search role and an optional region out of a free-text job request, so the
     live job tool is queried with the user's real intent rather than a generic term."""
@@ -164,7 +200,7 @@ class OfflineLLMClient:
                 tool_calls=[ToolCall("c1", "search_jobs", {"role": role, "location": location})],
             )
         if "run_sql_query" in tool_names:
-            query = "SELECT status, COUNT(*) AS count FROM applications GROUP BY status"
+            query = _build_sql(user_text)
             return ToolResponse(content=None, tool_calls=[ToolCall("c1", "run_sql_query", {"query": query})])
         return ToolResponse(content="I don't have a tool for that.")
 
@@ -192,9 +228,18 @@ class OfflineLLMClient:
             return "\n".join(lines)
 
         # Otherwise: a clean direct answer from the most relevant chunk (no [tag] noise).
-        if chunks:
-            return next(iter(chunks.values()))
-        return ""
+        # Lexical-grounding gate: the deterministic hashing embeddings give *every* doc a
+        # small non-zero similarity, so cosine alone can't tell "weakly related" from
+        # "unrelated". Only answer from a chunk that actually shares a content word with
+        # the question; otherwise report not-found (correct groundedness + RBAC scope).
+        q_words = {w for w in re.findall(r"[a-z]{3,}", question) if w not in _QUESTION_STOP}
+        if q_words:
+            for text in chunks.values():
+                low = text.lower()
+                if any(w in low for w in q_words):
+                    return text
+            return ""  # retrieved chunks exist but none is on-topic → not grounded
+        return next(iter(chunks.values())) if chunks else ""
 
     @staticmethod
     def _summarize(messages) -> str:
