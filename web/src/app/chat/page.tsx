@@ -7,6 +7,7 @@ import type { ChatResult, Message, Pending, Persona, TraceEvent } from "@/lib/ty
 import TracePanel from "@/components/TracePanel";
 import PendingActionCard from "@/components/PendingActionCard";
 import StarterPrompts from "@/components/StarterPrompts";
+import JobResults, { JobCard } from "@/components/JobResults";
 import DocsModal from "@/components/DocsModal";
 import AppsModal from "@/components/AppsModal";
 
@@ -231,6 +232,9 @@ export default function ChatPage() {
                   <div className="agent-reply" key={`${i}-${j}`}>
                     <span className="message-label">{r.agent}</span>
                     <div className="body">{linkify(r.content)}</div>
+                    {Array.isArray(r.metadata?.jobs) && (r.metadata.jobs as JobCard[]).length > 0 && active && (
+                      <JobResults jobs={r.metadata.jobs as JobCard[]} token={active.token} />
+                    )}
                     {showCitations && Array.isArray(r.metadata?.citations) && (r.metadata.citations as string[]).length > 0 && (
                       <div className="citations">
                         sources

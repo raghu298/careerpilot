@@ -130,6 +130,21 @@ async def test_jobs_agent_tool_calling_loop():
     assert any("search_jobs" in c for c in result.metadata["citations"])
 
 
+async def test_jobs_agent_surfaces_structured_jobs_for_ui():
+    """search_jobs results are surfaced in metadata['jobs'] so the UI can render
+    saveable cards (title/company/url) instead of re-parsing the text answer."""
+    llm = ScriptedLLMClient(
+        tool_responses=[
+            ToolResponse(content=None, tool_calls=[tool_call("search_jobs", {"role": "genai engineer"})]),
+            ToolResponse(content="Here are some roles."),
+        ]
+    )
+    result = await JobsAgent(llm, FakeJobsMCP(), _caps()).handle("find genai engineer roles")
+    jobs = result.metadata["jobs"]
+    assert jobs and all({"title", "company", "location"} <= set(j) for j in jobs)
+    assert any(j["company"] == "Nimbus Labs" for j in jobs)
+
+
 async def test_fake_mcp_salary_insights_aggregates():
     out = await FakeJobsMCP().call_tool("salary_insights", {"role": "genai engineer"})
     assert out["sample_size"] >= 1

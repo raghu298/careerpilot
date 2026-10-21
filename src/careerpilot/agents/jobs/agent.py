@@ -25,6 +25,32 @@ application history.
 """
 
 
+def _structured_jobs(tool_results: list[tuple[str, object]]) -> list[dict]:
+    """Pull the job postings out of search_jobs results so the UI can render saveable
+    cards (title/company/location/url/…) instead of re-parsing the composed text."""
+    jobs: list[dict] = []
+    seen: set[str] = set()
+    for name, result in tool_results:
+        if name != "search_jobs" or not isinstance(result, dict):
+            continue
+        for j in result.get("jobs", []) or []:
+            if not isinstance(j, dict):
+                continue
+            key = (j.get("url") or "") + j.get("title", "")
+            if key in seen:
+                continue
+            seen.add(key)
+            jobs.append({
+                "title": j.get("title", ""),
+                "company": j.get("company", ""),
+                "location": j.get("location", ""),
+                "url": j.get("url", ""),
+                "salary": j.get("salary", ""),
+                "stack": j.get("stack", ""),
+            })
+    return jobs
+
+
 class JobsAgent:
     name = "jobs"
 
@@ -56,4 +82,8 @@ class JobsAgent:
             on_event=on_event,
             tool_cache=tool_cache,
         )
-        return AgentResult(self.name, result.content, metadata={"citations": result.citations})
+        return AgentResult(
+            self.name,
+            result.content,
+            metadata={"citations": result.citations, "jobs": _structured_jobs(result.tool_results)},
+        )

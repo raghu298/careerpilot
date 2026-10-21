@@ -24,6 +24,9 @@ ExecuteTool = Callable[[str, dict], Awaitable[object]]
 class ToolLoopResult:
     content: str
     citations: list[str] = field(default_factory=list)
+    # Raw (name, parsed-result) for each tool call, so an agent can surface structured
+    # data (e.g. the job list) to the UI instead of only the composed text answer.
+    tool_results: list[tuple[str, object]] = field(default_factory=list)
 
 
 async def run_tool_loop(
@@ -38,11 +41,12 @@ async def run_tool_loop(
     max_steps: int = 5,
 ) -> ToolLoopResult:
     citations: list[str] = []
+    tool_results: list[tuple[str, object]] = []
 
     for _ in range(max_steps):
         response = await llm.get_tool_response(messages=messages, tools=tools)
         if not response.tool_calls:
-            return ToolLoopResult(content=response.content or "", citations=citations)
+            return ToolLoopResult(content=response.content or "", citations=citations, tool_results=tool_results)
 
         # Record the assistant's tool-call turn before appending results.
         messages.append(_assistant_tool_calls_message(response.tool_calls))
@@ -58,13 +62,14 @@ async def run_tool_loop(
 
         for call, result in await asyncio.gather(*(one(c) for c in response.tool_calls)):
             citations.append(f"{call.name}({json.dumps(call.arguments, sort_keys=True)})")
+            tool_results.append((call.name, result))
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, default=str)}
             )
 
     # Out of steps — ask once more for a best-effort final answer, no tools.
     final = await llm.get_tool_response(messages=messages, tools=[])
-    return ToolLoopResult(content=final.content or "", citations=citations)
+    return ToolLoopResult(content=final.content or "", citations=citations, tool_results=tool_results)
 
 
 def _assistant_tool_calls_message(tool_calls: list[ToolCall]) -> dict:
