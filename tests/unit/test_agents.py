@@ -114,7 +114,7 @@ async def test_notify_offline_draft_is_tailored_not_echo():
 
     outbox = DemoOutbox()
     agent = NotifyAgent(OfflineLLMClient(), _caps(), demo_outbox=outbox)
-    result = await agent.handle("draft a follow-up email to the recruiter at Askable")
+    await agent.handle("draft a follow-up email to the recruiter at Askable")
     assert agent.has_pending()
     body = agent.pending().body
     assert "draft a follow-up email" not in body.lower()  # not an echo

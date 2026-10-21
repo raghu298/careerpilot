@@ -13,8 +13,10 @@ from careerpilot.orchestrator.schemas import RoutingDecision
 # ---- observability ----
 def test_metrics_counters_and_latency_snapshot():
     m = Metrics()
-    m.incr("a"); m.incr("a", 2)
-    m.observe_ms("lat", 10); m.observe_ms("lat", 30)
+    m.incr("a")
+    m.incr("a", 2)
+    m.observe_ms("lat", 10)
+    m.observe_ms("lat", 30)
     snap = m.snapshot()
     assert snap["counters"]["a"] == 3
     assert snap["latency_ms"]["lat"]["count"] == 2
@@ -27,7 +29,8 @@ def test_rate_limiter_blocks_after_burst_then_refills():
     assert [rl.allow("k") for _ in range(3)] == [True, True, True]
     assert rl.allow("k") is False          # burst exhausted
     assert rl.allow("other") is True       # independent key
-    import time as _t; _t.sleep(0.01)      # refill at 1000/s
+    import time as _t
+    _t.sleep(0.01)                         # refill at 1000/s
     assert rl.allow("k") is True
 
 
