@@ -57,7 +57,12 @@ class OfflineLLMClient:
         name = schema.__name__
         text = user_prompt.lower()
         if name == "RoutingDecision":
-            agents = [a for a, kws in _ROUTING_KEYWORDS.items() if any(k in text for k in kws)]
+            # Keyword-match ONLY the current request. The router prepends the
+            # conversation history ("Conversation so far:\n…\n\nCurrent request: …")
+            # as context for a real LLM; matching the whole blob would let every past
+            # "find jobs" / "draft email" turn keep re-triggering those agents.
+            current = text.split("current request:", 1)[-1].strip() if "current request:" in text else text
+            agents = [a for a, kws in _ROUTING_KEYWORDS.items() if any(k in current for k in kws)]
             if not agents:
                 agents = ["knowledge"]
             why = {
