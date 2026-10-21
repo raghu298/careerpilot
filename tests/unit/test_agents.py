@@ -130,3 +130,24 @@ async def test_notify_offline_cover_letter():
     p = agent.pending()
     assert "Dear Hiring Team" in p.body
     assert "GenAI" in p.subject and "Acme" in p.subject
+
+
+async def test_jobs_agent_multi_tool_search_then_company():
+    """'roles at <Company>' must drive a multi-tool loop: search_jobs THEN get_company."""
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    events: list[dict] = []
+    agent = JobsAgent(OfflineLLMClient(), FakeJobsMCP(), _caps())
+    await agent.handle("find GenAI roles at Nimbus Labs", on_event=lambda e: events.append(e))
+    tools = [e["tool"] for e in events if e["type"] == "tool_called"]
+    assert tools == ["search_jobs", "get_company"]
+
+
+async def test_jobs_agent_company_only_lookup():
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    events: list[dict] = []
+    agent = JobsAgent(OfflineLLMClient(), FakeJobsMCP(), _caps())
+    await agent.handle("tell me about Nimbus Labs", on_event=lambda e: events.append(e))
+    tools = [e["tool"] for e in events if e["type"] == "tool_called"]
+    assert tools == ["get_company"]  # no job search for a pure company question

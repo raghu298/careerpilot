@@ -70,6 +70,50 @@ def _build_sql(question: str) -> str:
     return "SELECT status, COUNT(*) AS count FROM applications GROUP BY status"
 
 
+def _called_tools(messages) -> set[str]:
+    """Names of tools already invoked this turn (from the assistant's tool-call messages)."""
+    names: set[str] = set()
+    for m in messages:
+        for tc in m.get("tool_calls") or []:
+            fn = tc.get("function", {}).get("name") if isinstance(tc, dict) else None
+            if fn:
+                names.add(fn)
+    return names
+
+
+_SEARCH_WORDS = ("find", "search", "show", "roles", "role", "jobs", "job", "openings",
+                 "opening", "hiring", "listings", "positions", "postings", "vacanc")
+_COMPANY_CUES = ("tell me about", "about the company", "company ", "what is ", "what's ",
+                 "info on", "roles at", "jobs at", "hiring at", "work at", "learn about")
+
+
+def _parse_jobs_request(text: str) -> tuple[str, str, str, bool, bool]:
+    """Pull (role, location, company, wants_search, wants_company) from a jobs request.
+
+    Enables a multi-tool loop: 'find GenAI roles at Nimbus Labs' searches AND looks up
+    the company; 'tell me about Nimbus Labs' only looks up the company."""
+    low = text.lower()
+
+    # Company name after a cue word (capitalized phrase, or words after "about"/"at").
+    company = ""
+    m = re.search(r"\b(?:about|at|on|for|is|like)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,2})", text)
+    if m:
+        company = re.split(r"\b(and|that|which|hiring|recruiter)\b", m.group(1), flags=re.I)[0].strip(" .,")
+
+    # Extract the role from the text with the "at <Company>" phrase removed, so the
+    # company name doesn't leak into the job-board search term.
+    role_text = re.sub(r"\b(?:at|about|for|on)\s+" + re.escape(company), " ", text, flags=re.I) if company else text
+    role, location = _extract_job_query(role_text)
+    wants_company = bool(company) and any(c in low for c in _COMPANY_CUES)
+    wants_search = any(w in low for w in _SEARCH_WORDS)
+    # A bare "tell me about X" with no search words is a company-only lookup.
+    if wants_company and not wants_search:
+        wants_search = False
+    else:
+        wants_search = wants_search or not wants_company
+    return role, location, company, wants_search, wants_company
+
+
 def _extract_job_query(text: str) -> tuple[str, str]:
     """Pull a search role and an optional region out of a free-text job request, so the
     live job tool is queried with the user's real intent rather than a generic term."""
@@ -187,21 +231,33 @@ class OfflineLLMClient:
 
     async def get_tool_response(self, *, messages, tools) -> ToolResponse:
         tool_names = {t["function"]["name"] for t in tools} if tools else set()
-        already_called = any(m.get("role") == "tool" for m in messages)
         user_text = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "") or ""
+        called = _called_tools(messages)  # which tools have already run this turn
 
-        if not tools or already_called:
+        if not tools:
             return ToolResponse(content=self._summarize(messages))
 
-        if "search_jobs" in tool_names:
-            role, location = _extract_job_query(user_text)
-            return ToolResponse(
-                content=None,
-                tool_calls=[ToolCall("c1", "search_jobs", {"role": role, "location": location})],
-            )
+        # --- Jobs tools: a genuine multi-tool sequence ---------------------------
+        # search_jobs for openings, then get_company to enrich when the user named a
+        # company, so the trace shows multiple tools/calls like a real research loop.
+        if {"search_jobs", "get_company"} & tool_names:
+            role, location, company, wants_search, wants_company = _parse_jobs_request(user_text)
+            if "search_jobs" in tool_names and wants_search and "search_jobs" not in called:
+                return ToolResponse(
+                    content=None,
+                    tool_calls=[ToolCall("c1", "search_jobs", {"role": role, "location": location})],
+                )
+            if "get_company" in tool_names and company and wants_company and "get_company" not in called:
+                return ToolResponse(
+                    content=None,
+                    tool_calls=[ToolCall("c2", "get_company", {"name": company})],
+                )
+            return ToolResponse(content=self._summarize(messages))
+
         if "run_sql_query" in tool_names:
-            query = _build_sql(user_text)
-            return ToolResponse(content=None, tool_calls=[ToolCall("c1", "run_sql_query", {"query": query})])
+            if "run_sql_query" in called:
+                return ToolResponse(content=self._summarize(messages))
+            return ToolResponse(content=None, tool_calls=[ToolCall("c1", "run_sql_query", {"query": _build_sql(user_text)})])
         return ToolResponse(content="I don't have a tool for that.")
 
     @staticmethod
@@ -282,7 +338,18 @@ class OfflineLLMClient:
                     for row in data[:10]:
                         out.append("• " + ", ".join(f"{k}: {v}" for k, v in row.items()))
             elif isinstance(p, dict) and p.get("name"):
-                out.append(f"{p.get('name')} — {p.get('industry', '')}, ~{p.get('size', '?')} people. {p.get('summary', '')}")
+                name = p.get("name")
+                if p.get("error"):
+                    out.append(f"I couldn't find live info on {name} right now.")
+                elif p.get("open_roles") is not None:  # live get_company (RemoteOK/Remotive)
+                    line = f"{name} — {p['open_roles']} open role(s) live right now."
+                    if p.get("sample_roles"):
+                        line += " e.g. " + "; ".join(p["sample_roles"][:5]) + "."
+                    out.append(line)
+                elif p.get("summary"):  # offline fake profile
+                    out.append(f"{name} — {p.get('industry', '')}, ~{p.get('size', '?')} people. {p['summary']}")
+                else:
+                    out.append(str(name))
             else:
                 out.append(str(p))
         return "\n".join(out)

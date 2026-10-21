@@ -22,10 +22,10 @@ seeker actually feels.
 
 | Ask it… | Agent | How it works |
 |---|---|---|
-| *"Does my resume fit this JD? What are my gaps?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer) |
-| *"Find senior GenAI roles in Bangalore"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`) |
-| *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over your application tracker (3 stacked guardrails) |
-| *"Draft a follow-up email to the recruiter"* | **Notify** | Drafts outreach and **stages it** — sends only after you confirm (human-in-the-loop) |
+| *"Does my resume fit this JD? What are my gaps?"* | **Knowledge** | RAG over your resume + target job description + career guides (embeddings → pgvector → schema-guarded answer). Upload your own résumé/JD (PDF/TXT) via **"Use my resume"**. |
+| *"Find GenAI roles at Nimbus Labs"* | **Jobs** | Multi-turn tool-calling over a **jobs MCP server** (`search_jobs`, `get_company`) against **live postings** (RemoteOK + Remotive); a role-plus-company question drives both tools in one loop. |
+| *"How many applications got a response? Which are stale?"* | **Analytics** | Natural-language → **read-only** SQL over a **real SQLite** tracker of *your* applications (add them via **"My applications"**); 3 stacked guardrails. |
+| *"Draft a follow-up email to the recruiter at Acme"* | **Notify** | Drafts tailored outreach and **stages it** — sends only after you confirm (human-in-the-loop) |
 
 A single request can fan out to several agents at once, e.g.
 *"Find a role I haven't applied to yet and draft a cover letter for it"* → **Jobs +
@@ -80,11 +80,13 @@ src/careerpilot/
     analytics/      # NL → read-only SQL over the application tracker
     notify/         # HITL outreach drafter (ConfirmableAgent)
   core/             # Agent/LLM/Embedding protocols, tool-loop, tool cache, chunking
-  integrations/     # adapters: pgvector, SQL (+fake), jobs MCP (+fake), notifiers, offline brain
+  integrations/     # adapters: pgvector, SQL (Postgres + real SQLite), jobs MCP (+fake), notifiers, offline brain
   access_policy.py  # persona → typed capability set (enforced before agents are built)
   bootstrap.py      # shared + per-session wiring reused by every entry point
-api/                # FastAPI backend: sessions, chat (SSE), pending (HITL), outbox
-web/                # Next.js frontend (chat, live trace, persona chooser, outbox)
+api/                # FastAPI backend: sessions, chat (SSE), pending (HITL), docs, applications, outbox
+mcp_server/         # real MCP server: live job search over RemoteOK + Remotive
+web/                # Next.js frontend (chat, live trace, persona chooser, résumé + applications editors)
+evaluation/         # golden-dataset eval harness: RAG regression + Recall@k/MRR, agent correctness, optional DeepEval
 tests/unit/         # fake-backed tests — no network, no API key
 ```
 
@@ -94,8 +96,10 @@ tests/unit/         # fake-backed tests — no network, no API key
 # backend (offline — no key needed)
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                       # 22 offline tests
-python scripts/chat.py          # CLI: try every agent from the terminal
+pytest -q                            # 31 offline tests (no network, no key)
+python -m evaluation.run_knowledge_eval   # RAG regression + Recall@k/MRR (offline)
+python -m evaluation.run_agent_eval       # jobs relevance + NL→SQL + read-only guardrail
+python scripts/chat.py               # CLI: try every agent from the terminal
 
 # web app
 uvicorn api.main:app --reload --port 8000
@@ -111,9 +115,11 @@ are visible only to Arjun, enforced in the retrieval query, not by prompt text.
 | Capability | Set | Falls back to |
 |---|---|---|
 | Real models | `OPENAI_API_KEY` | deterministic offline brain |
-| Application tracker | `DATABASE_URL` (+ read-only role) | in-memory read-only fake |
-| Live job search | `JOBS_MCP_URL`, `JOBS_MCP_TOKEN` | deterministic fake MCP |
+| Application tracker | `DATABASE_URL` (+ read-only role) | **real in-memory SQLite** (you load your own applications) |
+| Live job search | default: live RemoteOK + Remotive (no key); or `JOBS_MCP_URL`, `JOBS_MCP_TOKEN` | deterministic fake MCP |
 | Real outreach | `SLACK_BOT_TOKEN` / `RESEND_API_KEY` … | Demo Outbox capture |
+
+> **Note on "fakes":** the SQL tracker fallback is a *real* SQLite engine (genuine SQL execution + read-only guardrail), not a pattern-matching stub — and live job search runs against real postings by default. The offline brain only stands in for the LLM/embeddings when no `OPENAI_API_KEY` is set.
 
 ## Deploy
 
