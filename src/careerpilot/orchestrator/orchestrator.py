@@ -46,6 +46,35 @@ def _merge(a: dict, b: dict) -> dict:
     return {**a, **b}
 
 
+_CAPABILITIES = (
+    "I'm CareerPilot, your job-hunt copilot. Ask me and I'll route you to the right specialist:\n\n"
+    "• **Résumé & JD fit** — \"Does my resume fit this role? What are my gaps?\" (upload yours via "
+    "\"Use my resume\")\n"
+    "• **Live job search** — \"Find senior GenAI roles\" — real postings with apply links\n"
+    "• **Your application tracker** — \"How many of my applications got a response? Which are stale?\" "
+    "(add yours via \"My applications\")\n"
+    "• **Outreach drafts** — \"Draft a follow-up email to the recruiter at Acme\" — I draft, you confirm before it's sent\n\n"
+    "What would you like to start with?"
+)
+
+_GREETINGS = {"hi", "hey", "hello", "yo", "sup", "hiya", "howdy", "thanks", "thank you", "ok", "okay"}
+
+
+def _help_reply(text: str) -> str | None:
+    """Return a capabilities/greeting reply for meta messages, else None (route normally)."""
+    t = text.strip().lower().rstrip("!?. ")
+    if t in _GREETINGS:
+        return _CAPABILITIES
+    meta_phrases = (
+        "what can you do", "what all you can do", "what do you do", "what can you help",
+        "how can you help", "help me", "what are you", "who are you", "how does this work",
+        "what is this", "capabilities", "how to use", "what should i ask",
+    )
+    if any(p in t for p in meta_phrases):
+        return _CAPABILITIES
+    return None
+
+
 class GraphState(TypedDict):
     user_request: str
     history: list[dict]
@@ -163,6 +192,19 @@ class Orchestrator:
     # ---- public API ---------------------------------------------------------
 
     async def handle(self, user_request: str, on_event: OnEvent | None = None) -> OrchestratorResult:
+        # Meta / greeting / off-topic messages ("what can you do", "hi") shouldn't be
+        # routed into RAG and answered with a random document — answer them directly.
+        help_text = _help_reply(user_request)
+        if help_text is not None:
+            emit(on_event, {"type": "routing_decided", "agents": [], "reasoning": "Capabilities / greeting — answered directly."})
+            self._memory.add_user(user_request)
+            self._memory.add_assistant(help_text)
+            emit(on_event, {"type": "done"})
+            return OrchestratorResult(
+                results={"assistant": AgentResult("assistant", help_text)},
+                routing_reasoning="Capabilities / greeting — answered directly.",
+            )
+
         config = self._config(on_event)
         state = await self._graph.ainvoke(
             {"user_request": user_request, "history": self._memory.as_messages(), "results": {}},

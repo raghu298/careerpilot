@@ -28,6 +28,31 @@ export async function setDocs(session: string, resume: string, jobDescription: s
   return res.json();
 }
 
+export type ApplicationRow = {
+  company: string;
+  role: string;
+  status: string;
+  applied_on?: string;
+  last_update?: string;
+  source?: string;
+  location?: string;
+};
+
+export async function getApplications(session: string): Promise<ApplicationRow[]> {
+  const res = await fetch(`${API_BASE}/session/applications`, { headers: { "x-session": session } });
+  const data = await res.json();
+  return (data.applications as ApplicationRow[]) || [];
+}
+
+export async function setApplications(session: string, applications: ApplicationRow[]) {
+  const res = await fetch(`${API_BASE}/session/applications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session, applications }),
+  });
+  return res.json();
+}
+
 export async function getOutbox(session: string) {
   const res = await fetch(`${API_BASE}/demo/outbox`, { headers: { "x-session": session } });
   const data = await res.json();

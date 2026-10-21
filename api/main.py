@@ -79,6 +79,21 @@ class DocsRequest(BaseModel):
     job_description: str = ""
 
 
+class Application(BaseModel):
+    company: str
+    role: str
+    status: str = "Applied"
+    applied_on: str = ""
+    last_update: str = ""
+    source: str = ""
+    location: str = ""
+
+
+class ApplicationsRequest(BaseModel):
+    session: str
+    applications: list[Application]
+
+
 def _require_session(request_token: str) -> Session:
     store: SessionStore = app.state.sessions
     session = store.get(request_token)
@@ -204,9 +219,32 @@ async def set_docs(req: DocsRequest):
     resources = app.state.resources
     store = await seed_knowledge_store(resources.embeddings, base + extra)
     session.orchestrator = build_session_orchestrator(
-        resources, persona_id=session.persona_id, vector_store=store
+        resources, persona_id=session.persona_id, vector_store=store, sql_client=session.sql_client
     )
     return {"ok": True, "using_custom": True, "docs": [d["source"] for d in extra]}
+
+
+@app.post("/session/applications")
+async def set_applications(req: ApplicationsRequest):
+    """Replace this session's application tracker with the user's REAL applications.
+
+    The rows are written into the session's live SQLite database; the Analytics agent
+    then answers by running genuine read-only SQL over them — no hard-coded numbers.
+    """
+    session = _require_session(req.session)
+    apps = [a.model_dump() for a in req.applications]
+    count = session.sql_client.replace_applications(apps)
+    return {"ok": True, "count": count}
+
+
+@app.get("/session/applications")
+async def get_applications(x_session: str = Header(default="")):
+    """Return the current rows so the UI can show/edit the tracker."""
+    session = _require_session(x_session)
+    rows = await session.sql_client.run_query(
+        "SELECT company, role, status, applied_on, last_update, source, location FROM applications"
+    )
+    return {"applications": rows}
 
 
 @app.get("/demo/outbox")

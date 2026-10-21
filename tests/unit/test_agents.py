@@ -7,7 +7,7 @@ from careerpilot.core.agent import Capabilities, ConfirmableAgent
 from careerpilot.core.llm_client import ToolResponse
 from careerpilot.integrations.jobs_data.mcp_client import FakeJobsMCP
 from careerpilot.integrations.notifications.notifiers import DemoOutbox
-from careerpilot.integrations.sql_db.fake_sql import FakeSQLClient
+from careerpilot.integrations.sql_db.sqlite_client import SqliteSQLClient
 from careerpilot.integrations.vector_store.pgvector_store import InMemoryVectorStore
 from tests.unit.fakes import FakeEmbeddingClient, ScriptedLLMClient, tool_call
 
@@ -64,7 +64,7 @@ async def test_analytics_agent_runs_readonly_sql():
             ToolResponse(content="You have applications across 6 statuses."),
         ]
     )
-    agent = AnalyticsAgent(llm, FakeSQLClient(role="basic"), _caps())
+    agent = AnalyticsAgent(llm, SqliteSQLClient(role="basic"), _caps())
     result = await agent.handle("how many applications by status?")
     assert "6 statuses" in result.content
 
@@ -76,7 +76,7 @@ async def test_analytics_agent_blocks_write_sql():
             ToolResponse(content="I can only read data."),
         ]
     )
-    agent = AnalyticsAgent(llm, FakeSQLClient(role="basic"), _caps())
+    agent = AnalyticsAgent(llm, SqliteSQLClient(role="basic"), _caps())
     result = await agent.handle("delete my applications")
     # The tool result that came back to the model must have been a guardrail block.
     assert "I can only read data." == result.content

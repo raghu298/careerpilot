@@ -28,7 +28,8 @@ from pathlib import Path
 from careerpilot.integrations.jobs_data.mcp_client import FakeJobsMCP, JobsSource, MCPJobsSource
 from careerpilot.integrations.notifications.notifiers import DemoOutbox
 from careerpilot.integrations.offline.offline_llm import HashingEmbeddingClient, OfflineLLMClient
-from careerpilot.integrations.sql_db.fake_sql import FakeSQLClient
+from careerpilot.integrations.sql_db.postgres_client import SQLClient
+from careerpilot.integrations.sql_db.sqlite_client import SqliteSQLClient
 from careerpilot.integrations.vector_store.pgvector_store import InMemoryVectorStore, VectorStore
 from careerpilot.orchestrator.memory import ConversationMemory
 from careerpilot.orchestrator.orchestrator import Orchestrator
@@ -118,9 +119,13 @@ def build_session_orchestrator(
     persona_id: str,
     memory: ConversationMemory | None = None,
     vector_store: VectorStore | None = None,
+    sql_client: SQLClient | None = None,
 ) -> Orchestrator:
     caps = resolve_capabilities(persona_id)
     demo_outbox = DemoOutbox()
+    # Real SQLite tracker (per session) unless the caller supplies one. SQLite is a real
+    # SQL engine — the agent's SELECTs execute for real; no pattern-matching fake.
+    sql_client = sql_client or SqliteSQLClient(role=caps.sql_role)
     # The deterministic offline embeddings produce lower cosine scores than real
     # embeddings, so a valid match can fall just under the default 0.2 floor. Relax the
     # floor in offline mode; real embeddings (OPENAI_API_KEY) keep the stricter 0.2.
@@ -134,7 +139,7 @@ def build_session_orchestrator(
             retrieval_floor=retrieval_floor,
         ),
         "jobs": JobsAgent(resources.llm, resources.jobs_source, caps),
-        "analytics": AnalyticsAgent(resources.llm, FakeSQLClient(role=caps.sql_role), caps),
+        "analytics": AnalyticsAgent(resources.llm, sql_client, caps),
         "notify": NotifyAgent(resources.llm, caps, demo_outbox=demo_outbox),
     }
     orch = Orchestrator(resources.router, agents, memory=memory)

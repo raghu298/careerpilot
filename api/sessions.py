@@ -12,7 +12,9 @@ import secrets
 import time
 from dataclasses import dataclass, field
 
+from careerpilot.access_policy import resolve_capabilities
 from careerpilot.bootstrap import SharedResources, build_session_orchestrator
+from careerpilot.integrations.sql_db.sqlite_client import SqliteSQLClient
 from careerpilot.orchestrator.orchestrator import Orchestrator
 
 _SESSION_TTL_SECONDS = 24 * 60 * 60
@@ -23,6 +25,7 @@ class Session:
     token: str
     persona_id: str
     orchestrator: Orchestrator
+    sql_client: SqliteSQLClient  # the session's real application tracker (SQLite)
     created_at: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.time)
 
@@ -34,8 +37,14 @@ class SessionStore:
 
     def create(self, persona_id: str) -> Session:
         token = secrets.token_urlsafe(24)
-        orch = build_session_orchestrator(self._resources, persona_id=persona_id)
-        session = Session(token=token, persona_id=persona_id, orchestrator=orch)
+        caps = resolve_capabilities(persona_id)
+        sql_client = SqliteSQLClient(role=caps.sql_role)
+        orch = build_session_orchestrator(
+            self._resources, persona_id=persona_id, sql_client=sql_client
+        )
+        session = Session(
+            token=token, persona_id=persona_id, orchestrator=orch, sql_client=sql_client
+        )
         self._sessions[token] = session
         return session
 

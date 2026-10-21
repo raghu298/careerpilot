@@ -242,3 +242,18 @@ a { color: var(--accent); text-decoration: none; }
 .btn-upload:hover:not(:disabled) { background: var(--accent); color: #fff; }
 .btn-upload:disabled { opacity: .55; cursor: wait; }
 .modal-error { background: #fdecec; border: 1px solid #f5c2c2; color: #a12222; border-radius: 8px; padding: 8px 11px; font-size: 12.5px; margin-bottom: 12px; line-height: 1.45; }
+.modal-wide { max-width: 720px; }
+.apps-empty { color: var(--text-muted); font-size: 13px; padding: 16px 0; }
+.apps-table { display: flex; flex-direction: column; gap: 6px; }
+.apps-head, .apps-row { display: grid; grid-template-columns: 1.3fr 1.6fr 1fr 1fr 28px; gap: 8px; align-items: center; }
+.apps-head { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); padding: 0 2px; }
+.apps-row input, .apps-row select { border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; font-size: 12.5px; font-family: inherit; width: 100%; background: var(--surface); color: var(--text); }
+.apps-row input:focus, .apps-row select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.apps-del { border: none; background: transparent; color: var(--text-muted); font-size: 18px; cursor: pointer; line-height: 1; }
+.apps-del:hover { color: #a12222; }
+.apps-add { align-self: flex-start; margin-top: 6px; border: 1px dashed var(--border); background: transparent; color: var(--accent); border-radius: 8px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.apps-add:hover { border-color: var(--accent); }
+@media (max-width: 640px) {
+  .apps-head { display: none; }
+  .apps-row { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; }
+}

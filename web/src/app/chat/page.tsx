@@ -8,6 +8,7 @@ import TracePanel from "@/components/TracePanel";
 import PendingActionCard from "@/components/PendingActionCard";
 import StarterPrompts from "@/components/StarterPrompts";
 import DocsModal from "@/components/DocsModal";
+import AppsModal from "@/components/AppsModal";
 
 type Conversation = { id: string; token: string; title: string; messages: Message[] };
 
@@ -25,6 +26,7 @@ export default function ChatPage() {
   const [working, setWorking] = useState(true);
   const [showCitations, setShowCitations] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showApps, setShowApps] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) || null;
@@ -195,6 +197,7 @@ export default function ChatPage() {
           <div className="header-center">Job-Hunt Copilot</div>
           <div className="header-right">
             <button className="text-button" onClick={() => setShowDocs(true)}>Use my resume</button>
+            <button className="text-button" onClick={() => setShowApps(true)}>My applications</button>
             <label className="toggle-label">
               <input type="checkbox" checked={working} onChange={(e) => setWorking(e.target.checked)} />
               Working
@@ -261,6 +264,22 @@ export default function ChatPage() {
       </main>
 
       {working && <TracePanel trace={trace} />}
+
+      {showApps && active && (
+        <AppsModal
+          token={active.token}
+          onClose={() => setShowApps(false)}
+          onSaved={() =>
+            updateActive((c) => ({
+              ...c,
+              messages: [
+                ...c.messages,
+                { role: "assistant", replies: [{ agent: "system", content: "Saved your applications. The Analytics agent now runs real SQL over them — try: \"How many of my applications got a response, and which are stale?\"", metadata: {} }], routing_reasoning: "" },
+              ],
+            }))
+          }
+        />
+      )}
 
       {showDocs && (
         <DocsModal

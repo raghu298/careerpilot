@@ -17,7 +17,7 @@ from careerpilot.access_policy import resolve_capabilities
 from careerpilot.agents.analytics.agent import AnalyticsAgent
 from careerpilot.agents.jobs.agent import JobsAgent
 from careerpilot.bootstrap import build_shared_resources
-from careerpilot.integrations.sql_db.fake_sql import FakeSQLClient
+from careerpilot.integrations.sql_db.sqlite_client import SqliteSQLClient
 from careerpilot.integrations.sql_db.postgres_client import ReadOnlyViolation
 from evaluation.datasets.agent_golden import ANALYTICS_GOLDEN_CASES, JOBS_GOLDEN_CASES
 
@@ -46,7 +46,7 @@ async def main() -> int:
 
     # ---- Analytics ----
     print("--- Analytics agent (NL->SQL) ---")
-    analytics = AnalyticsAgent(resources.llm, FakeSQLClient(role=caps.sql_role), caps)
+    analytics = AnalyticsAgent(resources.llm, SqliteSQLClient(role=caps.sql_role), caps)
     for case in ANALYTICS_GOLDEN_CASES:
         result = await analytics.handle(case["query"])
         text = result.content.lower()
@@ -63,7 +63,7 @@ async def main() -> int:
     for bad_sql in ("DELETE FROM applications", "UPDATE applications SET status='Offer'",
                     "DROP TABLE applications"):
         try:
-            await FakeSQLClient(role="basic").run_query(bad_sql)
+            await SqliteSQLClient(role="basic").run_query(bad_sql)
             failures.append(f"[guardrail] write NOT rejected: {bad_sql!r}")
             print(f"  ✗ allowed: {bad_sql!r}")
         except ReadOnlyViolation as exc:  # guardrail rejects non-SELECT
