@@ -24,16 +24,27 @@ BASE = os.environ.get("SMOKE_BASE_URL", "http://localhost:8000").rstrip("/")
 TIMEOUT = 90.0
 
 
-def _result(client: httpx.Client, message: str, session: str) -> dict:
-    """POST /chat and return the final 'result' SSE event as a dict."""
-    with client.stream("POST", f"{BASE}/chat", json={"session": session, "message": message}) as r:
-        r.raise_for_status()
-        for raw in r.iter_lines():
-            line = raw.strip() if isinstance(raw, str) else raw.decode().strip()
-            if line.startswith("data:"):
-                payload = json.loads(line[5:].strip())
-                if payload.get("type") == "result":
-                    return payload
+def _result(client: httpx.Client, message: str, session: str, _tries: int = 3) -> dict:
+    """POST /chat and return the final 'result' SSE event as a dict.
+
+    Retries on transient transport errors: Render's edge can reset a long-lived SSE
+    connection during a slow live-data turn, which is a network blip, not a failure of
+    the endpoint — a single reset shouldn't abort the whole smoke run.
+    """
+    for attempt in range(_tries):
+        try:
+            with client.stream("POST", f"{BASE}/chat", json={"session": session, "message": message}) as r:
+                r.raise_for_status()
+                for raw in r.iter_lines():
+                    line = raw.strip() if isinstance(raw, str) else raw.decode().strip()
+                    if line.startswith("data:"):
+                        payload = json.loads(line[5:].strip())
+                        if payload.get("type") == "result":
+                            return payload
+            raise AssertionError(f"no result event for {message!r}")
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            if attempt == _tries - 1:
+                raise AssertionError(f"transport error after {_tries} tries for {message!r}: {exc}") from exc
     raise AssertionError(f"no result event for {message!r}")
 
 
