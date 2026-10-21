@@ -134,6 +134,7 @@ are visible only to Arjun, enforced in the retrieval query, not by prompt text.
 | Capability | Set | Falls back to |
 |---|---|---|
 | Real models | `OPENAI_API_KEY` | deterministic offline brain |
+| Accounts (optional) | `CP_REQUIRE_AUTH=1` + `CP_AUTH_SECRET` | anonymous persona demo (default; auth available but not required) |
 | Durable sessions (survive restart) | `CP_DB_PATH` → a persistent disk (or external Postgres) | SQLite file (durable on any disk host; Render's *free* tier filesystem is ephemeral) |
 | Application tracker | `DATABASE_URL` (+ read-only role) | **real in-memory SQLite** (you load your own applications) |
 | Live job search | default: live RemoteOK + Remotive (no key); or `JOBS_MCP_URL`, `JOBS_MCP_TOKEN` | deterministic fake MCP |

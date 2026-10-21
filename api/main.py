@@ -4,6 +4,8 @@ Endpoints mirror the NexusAI demo shape:
 
     GET  /health                 → liveness
     GET  /metrics                → observability snapshot (counters + latency)
+    POST /auth/signup|login      → optional accounts (hashed pw → signed bearer token)
+    GET  /auth/me                → verify the current bearer token
     GET  /demo/personas          → the selectable personas
     POST /demo/sessions          → create an anonymous persona session (returns a token)
     POST /chat                   → run a turn, streamed as Server-Sent Events (live trace)
@@ -33,6 +35,7 @@ from careerpilot.core.observability import get_logger, metrics
 from careerpilot.core.rate_limit import RateLimiter
 from careerpilot.core.safety import redact_pii
 from careerpilot.fixtures import KNOWLEDGE_DOCS
+from api.auth import bearer_email, hash_password, make_token, require_auth_enabled, verify_password
 from api.persistence import PersistenceStore
 from api.sessions import Session, SessionStore
 
@@ -131,6 +134,42 @@ async def health():
     }
 
 
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/auth/signup")
+async def signup(req: AuthRequest):
+    email = req.email.strip().lower()
+    if "@" not in email or len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Valid email and a 6+ char password required.")
+    salt, pw_hash = hash_password(req.password)
+    if not app.state.persistence.create_user(email, salt, pw_hash):
+        raise HTTPException(status_code=409, detail="An account with that email already exists.")
+    metrics.incr("auth.signups")
+    return {"token": make_token(email), "email": email}
+
+
+@app.post("/auth/login")
+async def login(req: AuthRequest):
+    email = req.email.strip().lower()
+    user = app.state.persistence.get_user(email)
+    if user is None or not verify_password(req.password, user["salt"], user["pw_hash"]):
+        metrics.incr("auth.login_failures")
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    metrics.incr("auth.logins")
+    return {"token": make_token(email), "email": email}
+
+
+@app.get("/auth/me")
+async def auth_me(authorization: str = Header(default="")):
+    email = bearer_email(authorization)
+    if email is None:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    return {"email": email}
+
+
 @app.get("/metrics")
 async def get_metrics():
     """Observability snapshot — counters + latency percentiles for routing, agents,
@@ -149,7 +188,10 @@ async def personas():
 
 
 @app.post("/demo/sessions")
-async def create_session(req: SessionRequest, request: Request):
+async def create_session(req: SessionRequest, request: Request, authorization: str = Header(default="")):
+    # Auth is optional; enforced only when CP_REQUIRE_AUTH is set.
+    if require_auth_enabled() and bearer_email(authorization) is None:
+        raise HTTPException(status_code=401, detail="Sign in to start a session.")
     ip = _client_ip(request)
     if not _session_limiter.allow(ip):
         metrics.incr("ratelimit.sessions.blocked")

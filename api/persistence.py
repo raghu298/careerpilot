@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS memory (
     content TEXT NOT NULL,
     PRIMARY KEY (token, seq)
 );
+CREATE TABLE IF NOT EXISTS users (
+    email      TEXT PRIMARY KEY,
+    salt       TEXT NOT NULL,
+    pw_hash    TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -119,6 +125,27 @@ class PersistenceStore:
                 "SELECT role, content FROM memory WHERE token = ? ORDER BY seq", (token,)
             ).fetchall()
         return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+    # ---- users (optional accounts) ----
+    def create_user(self, email: str, salt: str, pw_hash: str) -> bool:
+        """Insert a user; return False if the email already exists."""
+        with self._lock:
+            exists = self._conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone()
+            if exists:
+                return False
+            self._conn.execute(
+                "INSERT INTO users (email, salt, pw_hash, created_at) VALUES (?, ?, ?, ?)",
+                (email, salt, pw_hash, time.time()),
+            )
+            self._conn.commit()
+            return True
+
+    def get_user(self, email: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT email, salt, pw_hash FROM users WHERE email = ?", (email,)
+            ).fetchone()
+        return dict(row) if row else None
 
     # ---- maintenance ----
     def purge_expired(self, ttl_seconds: float) -> int:
