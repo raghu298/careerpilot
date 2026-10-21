@@ -126,9 +126,20 @@ def _fetch_remotive(search: str, limit: int = 50) -> list[dict]:
 
 
 def _salary_range(lo, hi) -> str:
-    if lo and hi:
+    # Suppress degenerate ($10k–$10k) and implausibly-low (per-task placeholder) ranges
+    # so the UI never shows a misleading "salary".
+    if lo and hi and lo >= 10_000 and hi > lo:
         return f"${int(lo/1000)}k–${int(hi/1000)}k"
     return ""
+
+
+# Free-text salary markers that mean "not an annual salary" — gig/hourly/per-task pay
+# that would be misleading shown as a role's compensation.
+_GIG_PAY = ("per task", "per hour", "/hr", "hourly", "per word", "per project", "per month")
+
+
+def _clean_salary(salary: str) -> str:
+    return "" if any(m in salary.lower() for m in _GIG_PAY) else salary
 
 
 def _shape(job: dict) -> dict:
@@ -137,7 +148,7 @@ def _shape(job: dict) -> dict:
         "company": job["company"],
         "location": job["location"],
         "stack": ", ".join(job["tags"][:4]),
-        "salary": job["salary"],
+        "salary": _clean_salary(job["salary"]),
         "url": job["url"],
         "via": job["source"],
     }
@@ -151,6 +162,11 @@ _ROLE_KINDS = ("engineer", "developer", "scientist", "analyst", "architect", "re
                "designer", "manager")
 _OFFKIND = ("trainer", "manager", "sales", "support", "recruiter", "assistant", "coordinator",
             "annotator", "reviewer", "writer", "marketing")
+# Gig / micro-task / data-labeling listings — real postings, but almost never what
+# someone searching for an "ML engineer" wants, so they're pushed down regardless of
+# whether the title happens to contain a role-kind word like "engineer".
+_GIG = ("coding task", "ai coding", "data annotation", "annotation", "data labeling",
+        "labeling", "labelling", "micro task", "microtask", "per task")
 
 
 def _rank(terms: list[str], pool: list[dict], location: str, role_kinds: list[str]) -> list[dict]:
@@ -185,6 +201,10 @@ def _rank(terms: list[str], pool: list[dict], location: str, role_kinds: list[st
             # "Trainer"/"Manager" surfacing for an "engineer" search).
             elif technical_kind and any(w in title for w in _OFFKIND):
                 score -= 3
+            # Gig / micro-task listings get pushed down even if the title says "engineer".
+            haystack = title + " " + tags + " " + job.get("salary", "").lower()
+            if any(w in haystack for w in _GIG):
+                score -= 7
             scored.append((score, job))
     scored.sort(key=lambda x: -x[0])
     return [j for _, j in scored]
@@ -254,7 +274,9 @@ def salary_insights(role: str, location: str = "") -> dict:
     pairs = [
         (j["salary_min"], j["salary_max"]) for j in ranked
         if j.get("salary_min") and j.get("salary_max")
-        and 10_000 <= j["salary_min"] <= 1_000_000 and j["salary_max"] <= 2_000_000
+        # Floor at $20k/yr: below that is almost always a per-task/part-time placeholder
+        # that would drag the reported band misleadingly low.
+        and 20_000 <= j["salary_min"] <= 1_000_000 and j["salary_max"] <= 2_000_000
         and j["salary_max"] >= j["salary_min"]
     ]
     lows = [p[0] for p in pairs]
