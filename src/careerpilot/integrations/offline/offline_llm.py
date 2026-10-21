@@ -84,8 +84,70 @@ class OfflineLLMClient:
             answer = self._knowledge_answer(question, chunks)
             return schema(answer=answer or "No relevant context was found.", citations=sources, answer_found=bool(answer))
         if name == "Draft":
-            return schema(channel="email", subject="Following up on my application", body=user_prompt.strip()[:400])
+            subject, body = self._draft_message(user_prompt)
+            return schema(channel="email", subject=subject, body=body)
         return schema.model_construct()
+
+    @staticmethod
+    def _draft_message(prompt: str) -> tuple[str, str]:
+        """Write a real, tailored outreach draft instead of echoing the request.
+
+        Parses the company, an optional role, and whether this is a cover letter or a
+        follow-up, then fills a professional template. With OPENAI_API_KEY set, the real
+        model writes this; offline we still produce something genuinely sendable.
+        """
+        text = prompt.strip()
+        low = text.lower()
+
+        # If the user is revising an existing draft, keep that body and just apply the
+        # obvious tone asks; otherwise build fresh.
+        if low.startswith("revise this draft"):
+            body = text.split("Current body:", 1)[-1].strip()
+            if "short" in low or "concise" in low:
+                body = " ".join(body.split()[:60])
+            return ("Following up on my application", body or "Thank you for your time and consideration.")
+
+        # Company: "...at Acme", "to the recruiter at Acme", "for Acme".
+        company = ""
+        m = re.search(r"\b(?:at|with|to|for)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})", text)
+        if m:
+            company = m.group(1).strip(" .,")
+            # Trim trailing role words accidentally captured.
+            company = re.split(r"\b(recruiter|team|about|regarding|for the)\b", company, flags=re.I)[0].strip()
+        comp_phrase = f" at {company}" if company else ""
+
+        # Role, if the request names one.
+        role = ""
+        rm = re.search(r"\b(?:for|as)\s+(?:a|an|the)?\s*([a-z][\w /+-]*?\b(?:engineer|developer|scientist|manager|lead|designer|analyst|architect))\b", low)
+        if rm:
+            role = rm.group(1).strip()
+            role = re.sub(r"\bgenai\b", "GenAI", role.title(), flags=re.I)
+        role_phrase = f" {role}" if role else ""
+
+        is_cover = "cover letter" in low or "cover-letter" in low or "apply" in low
+
+        if is_cover:
+            subject = f"Application for the{role_phrase or ' role'}{comp_phrase}".strip()
+            body = (
+                f"Dear Hiring Team{comp_phrase},\n\n"
+                f"I'm excited to apply for the{role_phrase or ' role'}{comp_phrase}. My background in "
+                "building production software — and recent hands-on work with LLM applications, "
+                "retrieval, and API development — maps closely to what the role calls for.\n\n"
+                "I'd welcome the chance to share how I can contribute. My resume is attached, and I'm "
+                "happy to walk through relevant projects at your convenience.\n\n"
+                "Best regards,\n[Your name]"
+            )
+        else:
+            subject = f"Following up on the{role_phrase or ''} application{comp_phrase}".replace("  ", " ").strip()
+            body = (
+                f"Hi{(' ' + company) if company else ' there'},\n\n"
+                f"I recently applied for the{role_phrase or ' role'}{comp_phrase} and wanted to follow up to "
+                "reaffirm my strong interest. I'd love to learn about the next steps in your process.\n\n"
+                "If it's helpful, I'm glad to share more on my relevant experience or provide references. "
+                "Thanks very much for your time and consideration.\n\n"
+                "Best regards,\n[Your name]"
+            )
+        return subject, body
 
     async def get_tool_response(self, *, messages, tools) -> ToolResponse:
         tool_names = {t["function"]["name"] for t in tools} if tools else set()

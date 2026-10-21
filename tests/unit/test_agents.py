@@ -105,3 +105,28 @@ async def test_notify_agent_cancel_sends_nothing():
     agent.cancel_pending()
     assert not agent.has_pending()
     assert outbox.items() == []
+
+
+async def test_notify_offline_draft_is_tailored_not_echo():
+    """Offline Draft must produce a real, sendable message — parsing the company and
+    role — not echo the user's request verbatim."""
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    outbox = DemoOutbox()
+    agent = NotifyAgent(OfflineLLMClient(), _caps(), demo_outbox=outbox)
+    result = await agent.handle("draft a follow-up email to the recruiter at Askable")
+    assert agent.has_pending()
+    body = agent.pending().body
+    assert "draft a follow-up email" not in body.lower()  # not an echo
+    assert "Askable" in body
+    assert "Best regards" in body
+
+
+async def test_notify_offline_cover_letter():
+    from careerpilot.integrations.offline.offline_llm import OfflineLLMClient
+
+    agent = NotifyAgent(OfflineLLMClient(), _caps(), demo_outbox=DemoOutbox())
+    await agent.handle("write a cover letter for the Senior GenAI Engineer role at Acme")
+    p = agent.pending()
+    assert "Dear Hiring Team" in p.body
+    assert "GenAI" in p.subject and "Acme" in p.subject
