@@ -254,6 +254,8 @@ a { color: var(--accent); text-decoration: none; }
 /* Hamburger + drawer backdrop are desktop-hidden; shown on phones below. */
 .nav-toggle { display: none; }
 .nav-backdrop { display: none; }
+.trace-toggle { display: none; }
+.trace-close { display: none; }
 
 @media (max-width: 700px) {
   /* Sidebar becomes an off-canvas drawer so the chat gets the full width. */
@@ -278,9 +280,27 @@ a { color: var(--accent); text-decoration: none; }
   .brand-name, .brand-persona { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brand-persona { font-size: 11px; }
   /* On phones the header actions move into the drawer (below), so drop them here
-     entirely rather than cramming them into an awkward horizontal scroll. */
+     entirely rather than cramming them into an awkward horizontal scroll. The header
+     keeps the brand on the left and a Trace button on the right. */
   .header-right { display: none; }
-  .chat-header { grid-template-columns: 1fr; }
+  .chat-header { grid-template-columns: 1fr auto; }
+  .trace-toggle {
+    display: inline-flex; align-items: center; gap: 4px; justify-self: end; flex-shrink: 0;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    color: var(--text); font-size: 12.5px; font-weight: 600; padding: 7px 10px; white-space: nowrap;
+  }
+
+  /* Orchestration trace becomes a right-side drawer (it's hidden at ≤820px above). */
+  .trace-panel {
+    display: block; position: fixed; top: 0; right: 0; z-index: 60; width: 88%; max-width: 340px;
+    transform: translateX(100%); transition: transform 0.22s ease; will-change: transform;
+  }
+  .trace-panel.open { transform: translateX(0); box-shadow: 0 0 44px rgba(0,0,0,.55); }
+  .trace-title { display: flex; justify-content: space-between; align-items: center; }
+  .trace-close {
+    display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--text); font-size: 18px; line-height: 1;
+  }
 
   .demo-banner { padding: 8px 14px; font-size: 11.5px; }
   .chat-body { padding: 16px 14px; }

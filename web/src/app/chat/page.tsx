@@ -29,6 +29,7 @@ export default function ChatPage() {
   const [showDocs, setShowDocs] = useState(false);
   const [showApps, setShowApps] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) || null;
@@ -191,7 +192,9 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+      {(navOpen || traceOpen) && (
+        <div className="nav-backdrop" onClick={() => { setNavOpen(false); setTraceOpen(false); }} />
+      )}
       <aside className={`conversation-sidebar ${navOpen ? "open" : ""}`}>
         <div className="conversation-sidebar-header">
           <span>Conversations</span>
@@ -254,6 +257,9 @@ export default function ChatPage() {
             <a href="/outbox">Demo Outbox</a>
             <button className="text-button" onClick={switchProfile}>Switch profile</button>
           </div>
+          <button className="trace-toggle" onClick={() => setTraceOpen(true)} aria-label="Show orchestration trace">
+            ⚡ Trace
+          </button>
         </header>
 
         <div className="demo-banner">
@@ -311,7 +317,7 @@ export default function ChatPage() {
         </form>
       </main>
 
-      {working && <TracePanel trace={trace} />}
+      {working && <TracePanel trace={trace} open={traceOpen} onClose={() => setTraceOpen(false)} />}
 
       {showApps && active && (
         <AppsModal

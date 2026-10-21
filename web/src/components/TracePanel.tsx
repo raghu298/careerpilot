@@ -1,11 +1,24 @@
 import type { Trace, TraceBranch } from "@/lib/trace";
 
-export default function TracePanel({ trace }: { trace: Trace }) {
+export default function TracePanel({
+  trace,
+  open,
+  onClose,
+}: {
+  trace: Trace;
+  open?: boolean;
+  onClose?: () => void;
+}) {
   const hasStarted = trace.branches.length > 0 || !!trace.reasoning;
 
   return (
-    <aside className="trace-panel">
-      <div className="trace-title">Orchestration Trace</div>
+    <aside className={`trace-panel ${open ? "open" : ""}`}>
+      <div className="trace-title">
+        <span>Orchestration Trace</span>
+        {onClose && (
+          <button className="trace-close" onClick={onClose} aria-label="Close trace">×</button>
+        )}
+      </div>
 
       {!hasStarted && <p className="trace-empty">Send a message to see how the agents coordinate.</p>}
 
