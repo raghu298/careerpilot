@@ -139,9 +139,21 @@ def _shape(job: dict) -> dict:
     }
 
 
-def _rank(terms: list[str], pool: list[dict], location: str) -> list[dict]:
+# The kind of role the user asked for (stripped from topic terms, but it matters a lot
+# for relevance: an "ML engineer" search should rank Engineer titles above "AI Trainer"
+# or "Product Manager, AI"). A title in the requested kind is boosted; an off-kind title
+# (manager/trainer/sales/support when an engineer/dev/scientist was asked) is penalised.
+_ROLE_KINDS = ("engineer", "developer", "scientist", "analyst", "architect", "researcher",
+               "designer", "manager")
+_OFFKIND = ("trainer", "manager", "sales", "support", "recruiter", "assistant", "coordinator",
+            "annotator", "reviewer", "writer", "marketing")
+
+
+def _rank(terms: list[str], pool: list[dict], location: str, role_kinds: list[str]) -> list[dict]:
     # Whole-word matchers — critical so "ai" doesn't match "Rails" or "go" "Django".
     matchers = [re.compile(r"\b" + re.escape(t) + r"\b") for t in terms]
+    kind_res = [re.compile(r"\b" + re.escape(k) + r"\b") for k in role_kinds]
+    technical_kind = any(k in ("engineer", "developer", "scientist", "architect") for k in role_kinds)
     loc = location.lower().strip()
     seen_urls: set[str] = set()
     scored: list[tuple[int, dict]] = []
@@ -162,6 +174,13 @@ def _rank(terms: list[str], pool: list[dict], location: str) -> list[dict]:
             for m in matchers
         )
         if score > 0:
+            # Boost a title that matches the requested role kind.
+            if any(k.search(title) for k in kind_res):
+                score += 6
+            # Penalise an off-kind title when a technical role was requested (e.g. a
+            # "Trainer"/"Manager" surfacing for an "engineer" search).
+            elif technical_kind and any(w in title for w in _OFFKIND):
+                score -= 3
             scored.append((score, job))
     scored.sort(key=lambda x: -x[0])
     return [j for _, j in scored]
@@ -171,6 +190,7 @@ def _rank(terms: list[str], pool: list[dict], location: str) -> list[dict]:
 def search_jobs(role: str, location: str = "") -> dict:
     """Search live remote job postings by role and optional location."""
     terms = _topic_terms(role)
+    role_kinds = [k for k in _ROLE_KINDS if re.search(r"\b" + k + r"\b", role.lower())]
     pool: list[dict] = []
     errors: list[str] = []
 
@@ -189,7 +209,7 @@ def search_jobs(role: str, location: str = "") -> dict:
     if not pool:
         return {"count": 0, "jobs": [], "error": "; ".join(errors) or "no live job source reachable"}
 
-    ranked = _rank(terms, pool, location)
+    ranked = _rank(terms, pool, location, role_kinds)
     jobs = [_shape(j) for j in ranked[:8]]
     if not jobs:
         # Nothing matched the topic — surface the freshest tech roles rather than nothing.

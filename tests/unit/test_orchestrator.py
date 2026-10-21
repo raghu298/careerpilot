@@ -65,3 +65,31 @@ async def test_orchestrator_memory_accumulates():
     await orch.handle("second")
     text = orch.memory.as_text()
     assert "first" in text and "second" in text
+
+
+async def test_results_do_not_accumulate_across_turns():
+    """A later turn must return only its own agents' replies — not prior turns' (the
+    checkpointed `results` channel is merged, so without filtering it would accumulate)."""
+
+    class MultiRouteLLM:
+        """Routes turn 1 -> knowledge, turn 2 -> jobs, turn 3 -> analytics."""
+        def __init__(self):
+            self.seq = [["knowledge"], ["jobs"], ["analytics"]]
+            self.i = 0
+
+        async def get_structured_output(self, *, system_prompt, user_prompt, schema):
+            agents = self.seq[min(self.i, len(self.seq) - 1)]
+            self.i += 1
+            return RoutingDecision(agents=agents, reasoning="x")
+
+        async def get_tool_response(self, **_):  # pragma: no cover
+            raise AssertionError
+
+    agents = {n: RecordingAgent(n) for n in ("knowledge", "jobs", "analytics", "notify")}
+    orch = Orchestrator(Router(MultiRouteLLM()), agents)
+    r1 = await orch.handle("q1")
+    r2 = await orch.handle("q2")
+    r3 = await orch.handle("q3")
+    assert set(r1.results.keys()) == {"knowledge"}
+    assert set(r2.results.keys()) == {"jobs"}       # not {knowledge, jobs}
+    assert set(r3.results.keys()) == {"analytics"}  # not {knowledge, jobs, analytics}

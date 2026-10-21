@@ -244,7 +244,16 @@ class Orchestrator:
 
     def _finalize(self, user_request: str | None, state: dict, on_event: OnEvent | None) -> OrchestratorResult:
         interrupts = state.get("__interrupt__")
-        results = {n: _dict_to_result(d) for n, d in state.get("results", {}).items()}
+        # The graph's `results` channel is checkpointed per session thread and merged by a
+        # reducer, so it accumulates every agent that has ever run in this session. Return
+        # only THIS turn's agents (state["selected"]) so a later turn doesn't re-emit prior
+        # turns' replies.
+        selected = set(state.get("selected", []))
+        results = {
+            n: _dict_to_result(d)
+            for n, d in state.get("results", {}).items()
+            if not selected or n in selected
+        }
         out = OrchestratorResult(results=results, routing_reasoning=state.get("routing_reasoning", ""))
         if interrupts:
             payload = interrupts[0].value
